@@ -15,7 +15,7 @@ import cv2
 import trimesh
 import matplotlib.pyplot as plt
 
-def decouple(image_path: str, results_path: str, device='cuda'):
+def decouple(image_path: str, results_path: str, device='cuda', train_bool=False):
 
     # Get the image and converting it to a rgb so mediapipe can process it
     fn, ext = os.path.splitext(os.path.basename(image_path))
@@ -57,75 +57,141 @@ def decouple(image_path: str, results_path: str, device='cuda'):
 
     # Using DECA to Build the FLAME Model for both sides and extract the parameters
     # Initialization
-    deca = DECA(config = deca_cfg, device=device)
+    if not train_bool:
+        deca = DECA(config = deca_cfg, device=device)
+    else:
+        deca = DECA(train_bool=True, device = 'cuda')
 
     #Get the data in the right format
     test_l = datasets.TestData(left_mir_path)
     test_r = datasets.TestData(right_mir_path)
     render_orig = True
-    deca_cfg.model.use_tex = False
-    deca_cfg.model.extract_tex = False
-    #Get the codedictionarys
-    for i in tqdm(range(len(test_l))):
-        name = test_l[i]['imagename']
-        images_l = test_l[i]['image'].to(device)[None,...]
-        with torch.no_grad(): 
-            codedict_l = deca.encode(images_l)
-            opdict_l, visdict_l = deca.decode(codedict_l) #tensor
-            if render_orig:
-                tform_l = test_l[i]['tform'][None, ...]
-                tform_l = torch.inverse(tform_l).transpose(1,2).to(device)
-                original_image_l = test_l[i]['original_image'][None, ...].to(device)
-                _, orig_visdict_l = deca.decode(codedict_l, render_orig=True, original_image=original_image_l, tform=tform_l)    
-                orig_visdict_l['inputs'] = original_image_l    
-            
-    deca.save_obj(os.path.join(results_path, fn + '_left.obj'), opdict_l)
-    cv2.imwrite(os.path.join(results_path, fn + '_left_vis.png'), deca.visualize(visdict_l))
-
-    #Get the codedictionarys
-    for i in tqdm(range(len(test_r))):
-        name = test_r[i]['imagename']
-        images_r = test_r[i]['image'].to(device)[None,...]
-        with torch.no_grad():
-            codedict_r = deca.encode(images_r)
-            opdict_r, visdict_r = deca.decode(codedict_r) #tensor
-            if render_orig:
-                tform_r = test_r[i]['tform'][None, ...]
-                tform_r = torch.inverse(tform_r).transpose(1,2).to(device)
-                original_image_r = test_r[i]['original_image'][None, ...].to(device)
-                _, orig_visdict_r = deca.decode(codedict_r, render_orig=True, original_image=original_image_r, tform=tform_r)    
-                orig_visdict_r['inputs'] = original_image_r    
+    if not train_bool:
+        #Get the codedictionarys
+        for i in tqdm(range(len(test_l))):
+            name = test_l[i]['imagename']
+            images_l = test_l[i]['image'].to(device)[None,...]
+            with torch.no_grad(): 
+                codedict_l = deca.encode(images_l)
+                opdict_l, visdict_l = deca.decode(codedict_l) #tensor
+                if render_orig:
+                    tform_l = test_l[i]['tform'][None, ...]
+                    tform_l = torch.inverse(tform_l).transpose(1,2).to(device)
+                    original_image_l = test_l[i]['original_image'][None, ...].to(device)
+                    _, orig_visdict_l = deca.decode(codedict_l, render_orig=True, original_image=original_image_l, tform=tform_l)    
+                    orig_visdict_l['inputs'] = original_image_l    
                 
-    deca.save_obj(os.path.join(results_path, fn + '_right.obj'), opdict_r)
-    cv2.imwrite(os.path.join(results_path, fn + '_right_vis.png'), deca.visualize(visdict_r))
-    
-    #Build codedictionary for both sides
-    codedict_decoupled = {
-        'left': {
-            'exp': codedict_l['exp'],
-            'shape': codedict_l['shape'],
-            'pose': codedict_l['pose']
-        },
-        'right': {
-            'exp': codedict_r['exp'],
-            'shape': codedict_r['shape'],
-            'pose': codedict_r['pose']
+        deca.save_obj(os.path.join(results_path, fn + '_left.obj'), opdict_l)
+        cv2.imwrite(os.path.join(results_path, fn + '_left_vis.png'), deca.visualize(visdict_l))
+
+        #Get the codedictionarys
+        for i in tqdm(range(len(test_r))):
+            name = test_r[i]['imagename']
+            images_r = test_r[i]['image'].to(device)[None,...]
+            with torch.no_grad():
+                codedict_r = deca.encode(images_r)
+                opdict_r, visdict_r = deca.decode(codedict_r) #tensor
+                if render_orig:
+                    tform_r = test_r[i]['tform'][None, ...]
+                    tform_r = torch.inverse(tform_r).transpose(1,2).to(device)
+                    original_image_r = test_r[i]['original_image'][None, ...].to(device)
+                    _, orig_visdict_r = deca.decode(codedict_r, render_orig=True, original_image=original_image_r, tform=tform_r)    
+                    orig_visdict_r['inputs'] = original_image_r    
+                    
+        deca.save_obj(os.path.join(results_path, fn + '_right.obj'), opdict_r)
+        cv2.imwrite(os.path.join(results_path, fn + '_right_vis.png'), deca.visualize(visdict_r))
+        
+        #Build codedictionary for both sides
+        codedict_decoupled = {
+            'left': {
+                'exp': codedict_l['exp'],
+                'shape': codedict_l['shape'],
+                'pose': codedict_l['pose']
+            },
+            'right': {
+                'exp': codedict_r['exp'],
+                'shape': codedict_r['shape'],
+                'pose': codedict_r['pose']
+            }
         }
-    }
+        # Save codedictionary
+        torch.save(codedict_decoupled, os.path.join(results_path, fn + '_codedict.pth'))
+        
+        vert_l = np.loadtxt(results_path + fn + '_left_vertice.txt')
+        vert_r = np.loadtxt(results_path + fn + '_right_vertice.txt')
+        faces = np.loadtxt(results_path + fn + '_right_faces.txt')
 
-    # Save codedictionary
-    torch.save(codedict_decoupled, os.path.join(results_path, fn + '_codedict.pth'))
-    
-    vert_l = np.loadtxt(results_path + fn + '_left_vertice.txt')
-    vert_r = np.loadtxt(results_path + fn + '_right_vertice.txt')
-    faces = np.loadtxt(results_path + fn + '_right_faces.txt')
+        vert_blended = binary_blending(vert_l, vert_r)
+        
+        vertex_colors = np.ones([vert_blended.shape[0], 4]) * [1.0, 1.0, 1.0, 1.0]
+        tri_mesh = trimesh.Trimesh(vert_blended, faces, vertex_colors=vertex_colors)
+        tri_mesh.export(results_path + fn + '_blended.obj')
+        torch.cuda.empty_cache()
+    else:
+        fn = fn + "_wo_shape"
+        #Get the codedictionarys
+        for i in tqdm(range(len(test_l))):
+            name = test_l[i]['imagename']
+            images_l = test_l[i]['image'].to(device)[None,...]
+            with torch.no_grad(): 
+                codedict_l = deca.encode(images_l)
+                shape_params_l = get_shape_params(left_mir_path)
+                opdict_l, visdict_l = deca.decode(codedict_l, train_bool=True, shape_params=shape_params_l)
+                if render_orig:
+                    tform_l = test_l[i]['tform'][None, ...]
+                    tform_l = torch.inverse(tform_l).transpose(1,2).to(device)
+                    original_image_l = test_l[i]['original_image'][None, ...].to(device)
+                    _, orig_visdict_l = deca.decode(codedict_l, render_orig=True, original_image=original_image_l, tform=tform_l, train_bool=True, shape_params=shape_params_l)    
+                    orig_visdict_l['inputs'] = original_image_l    
+                
+        deca.save_obj(os.path.join(results_path, fn + '_left.obj'), opdict_l)
+        cv2.imwrite(os.path.join(results_path, fn + '_left_vis.png'), deca.visualize(visdict_l))
 
-    vert_blended = binary_blending(vert_l, vert_r)
-    
-    vertex_colors = np.ones([vert_blended.shape[0], 4]) * [1.0, 1.0, 1.0, 1.0]
-    tri_mesh = trimesh.Trimesh(vert_blended, faces, vertex_colors=vertex_colors)
-    tri_mesh.export(results_path + fn + '_blended.obj')
-    torch.cuda.empty_cache()
+        #Get the codedictionarys
+        for i in tqdm(range(len(test_r))):
+            name = test_r[i]['imagename']
+            images_r = test_r[i]['image'].to(device)[None,...]
+            with torch.no_grad():
+                codedict_r = deca.encode(images_r)
+                shape_params_r = get_shape_params(right_mir_path)
+                opdict_r, visdict_r = deca.decode(codedict_r, train_bool=True, shape_params=shape_params_r) #tensor
+                if render_orig:
+                    tform_r = test_r[i]['tform'][None, ...]
+                    tform_r = torch.inverse(tform_r).transpose(1,2).to(device)
+                    original_image_r = test_r[i]['original_image'][None, ...].to(device)
+                    _, orig_visdict_r = deca.decode(codedict_r, render_orig=True, original_image=original_image_r, tform=tform_r, train_bool=True, shape_params=shape_params_r)    
+                    orig_visdict_r['inputs'] = original_image_r    
+                    
+        deca.save_obj(os.path.join(results_path, fn + '_right.obj'), opdict_r)
+        cv2.imwrite(os.path.join(results_path, fn + '_right_vis.png'), deca.visualize(visdict_r))
+        
+        #Build codedictionary for both sides
+        codedict_decoupled = {
+            'left': {
+                'exp': codedict_l['exp'],
+                'shape': shape_params_l,
+                'pose': codedict_l['pose']
+            },
+            'right': {
+                'exp': codedict_r['exp'],
+                'shape': shape_params_r,
+                'pose': codedict_r['pose']
+            }
+        }
+
+        # Save codedictionary
+        torch.save(codedict_decoupled, os.path.join(results_path, fn + '_codedict.pth'))
+        
+        vert_l = np.loadtxt(results_path + fn + '_left_vertice.txt')
+        vert_r = np.loadtxt(results_path + fn + '_right_vertice.txt')
+        faces = np.loadtxt(results_path + fn + '_right_faces.txt')
+
+        vert_blended = binary_blending(vert_l, vert_r)
+        
+        vertex_colors = np.ones([vert_blended.shape[0], 4]) * [1.0, 1.0, 1.0, 1.0]
+        tri_mesh = trimesh.Trimesh(vert_blended, faces, vertex_colors=vertex_colors)
+        tri_mesh.export(results_path + fn + '_blended.obj')
+        torch.cuda.empty_cache()
     print("Decoupling done")
 
 def binary_blending(vertices_right, vertices_left):
@@ -143,7 +209,26 @@ def binary_blending(vertices_right, vertices_left):
 
     return vertice_exp_lr
 
+def get_shape_params(image_path: str, device='cuda'):
+    """Function for getting the shape parameters of an image
+    """
+    # Initialization
+    deca = DECA()
 
+    #Get the data in the right format
+    test_img = datasets.TestData(image_path)
+    deca_cfg.model.use_tex = False
+    deca_cfg.model.extract_tex = False
+
+    #Get the codedictionarys
+    for i in tqdm(range(len(test_img))):
+        name = test_img[i]['imagename']
+        images_l = test_img[i]['image'].to(device)[None,...]
+        with torch.no_grad(): 
+            codedict = deca.encode(images_l)
+
+    torch.cuda.empty_cache()
+    return codedict['shape']
 
 
 
