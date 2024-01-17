@@ -27,71 +27,82 @@ import pickle
 from .utils.renderer import SRenderY, set_rasterizer
 from .models.encoders import ResnetEncoder
 from .models.FLAME import FLAME, FLAMETex
+from .models.config import get_config
 from .models.decoders import Generator
 from .utils import util
 from .utils.rotation_converter import batch_euler2axis
 from .utils.tensor_cropper import transform_points
 from .datasets import datasets
-from .utils.config import cfg
+from .utils.config import cfg as config_default
+from .utils.config_train import config_train
 torch.backends.cudnn.benchmark = True
 from IPython.display import display
 
 class DECA(nn.Module):
-    def __init__(self, config=None, device='cuda'):
+    def __init__(self, config_build=None, device='cuda', train_bool=False):
         super(DECA, self).__init__()
-        if config is None:
-            self.cfg = cfg
+        if config_build is None:
+            if not train_bool:
+                self.config = config_default
+            else:
+                self.config = config_train
         else:
-            self.cfg = config
-        self.device = device
-        self.image_size = self.cfg.dataset.image_size
-        self.uv_size = self.cfg.model.uv_size
+            self.config = config_build
 
-        self._create_model(self.cfg.model)
-        self._setup_renderer(self.cfg.model)
+        self.device____ = device
+        self.image_size = self.config.dataset.image_size
+        self.uv_size___ = self.config.model.uv_size
 
-    def _setup_renderer(self, model_cfg):
-        set_rasterizer(self.cfg.rasterizer_type)
-        self.render = SRenderY(self.image_size, obj_filename=model_cfg.topology_path, uv_size=model_cfg.uv_size, rasterizer_type=self.cfg.rasterizer_type).to(self.device)
+        self._create_model__(self.config.model, train_bool)
+        self._setup_renderer(self.config.model)
+
+    def _setup_renderer(self, model_cfg_):
+        set_rasterizer(self.config.rasterizer_type)
+        self.render____ = SRenderY(self.image_size, obj_filename=model_cfg_.topology_path, uv_size=model_cfg_.uv_size, rasterizer_type=self.config.rasterizer_type).to(self.device____)
         # face mask for rendering details
-        mask = imread(model_cfg.face_eye_mask_path).astype(np.float32)/255.; mask = torch.from_numpy(mask[:,:,0])[None,None,:,:].contiguous()
-        self.uv_face_eye_mask = F.interpolate(mask, [model_cfg.uv_size, model_cfg.uv_size]).to(self.device)
-        mask = imread(model_cfg.face_mask_path).astype(np.float32)/255.; mask = torch.from_numpy(mask[:,:,0])[None,None,:,:].contiguous()
-        self.uv_face_mask = F.interpolate(mask, [model_cfg.uv_size, model_cfg.uv_size]).to(self.device)
+        msk_render = imread(model_cfg_.face_eye_mask_path).astype(np.float32)/255.
+        msk_render = torch.from_numpy(msk_render[:,:,0])[None,None,:,:].contiguous()
+        self.uv_faceEye = F.interpolate(msk_render, [model_cfg_.uv_size, model_cfg_.uv_size]).to(self.device____)
+        msk_render = imread(model_cfg_.face_mask_path).astype(np.float32)/255.
+        msk_render = torch.from_numpy(msk_render[:,:,0])[None,None,:,:].contiguous()
+        self.uv_face___ = F.interpolate(msk_render, [model_cfg_.uv_size, model_cfg_.uv_size]).to(self.device____)
         # displacement correction
-        fixed_dis = np.load(model_cfg.fixed_displacement_path)
-        self.fixed_uv_dis = torch.tensor(fixed_dis).float().to(self.device)
+        fixed_dis_ = np.load(model_cfg_.fixed_displacement_path)
+        self.fix_uv_dis = torch.tensor(fixed_dis_).float().to(self.device____)
         # mean texture
-        mean_texture = imread(model_cfg.mean_tex_path).astype(np.float32)/255.; mean_texture = torch.from_numpy(mean_texture.transpose(2,0,1))[None,:,:,:].contiguous()
-        self.mean_texture = F.interpolate(mean_texture, [model_cfg.uv_size, model_cfg.uv_size]).to(self.device)
+        mean_text_ = imread(model_cfg_.mean_tex_path).astype(np.float32)/255.; mean_text_ = torch.from_numpy(mean_text_.transpose(2,0,1))[None,:,:,:].contiguous()
+        self.mean_text_ = F.interpolate(mean_text_, [model_cfg_.uv_size, model_cfg_.uv_size]).to(self.device____)
         # dense mesh template, for save detail mesh
-        self.dense_template = np.load(model_cfg.dense_template_path, allow_pickle=True, encoding='latin1').item()
+        self.dense_temp = np.load(model_cfg_.dense_template_path, allow_pickle=True, encoding='latin1').item()
 
-    def _create_model(self, model_cfg):
+    def _create_model__(self, model_cfg_, train_bool):
         # set up parameters
-        self.n_param = model_cfg.n_shape+model_cfg.n_tex+model_cfg.n_exp+model_cfg.n_pose+model_cfg.n_cam+model_cfg.n_light
-        self.n_detail = model_cfg.n_detail
-        self.n_cond = model_cfg.n_exp + 3 # exp + jaw pose
-        self.num_list = [model_cfg.n_shape, model_cfg.n_tex, model_cfg.n_exp, model_cfg.n_pose, model_cfg.n_cam, model_cfg.n_light]
-        self.param_dict = {i:model_cfg.get('n_' + i) for i in model_cfg.param_list}
-
-
+        if not train_bool:
+            self.num_params = model_cfg_.n_shape+model_cfg_.n_tex+model_cfg_.n_exp+model_cfg_.n_pose+model_cfg_.n_cam+model_cfg_.n_light
+            self.num_list__ = [model_cfg_.n_shape, model_cfg_.n_tex, model_cfg_.n_exp, model_cfg_.n_pose, model_cfg_.n_cam, model_cfg_.n_light]
+        else:
+            self.num_params = model_cfg_.n_tex+model_cfg_.n_exp+model_cfg_.n_pose+model_cfg_.n_cam+model_cfg_.n_light
+            self.num_list__ = [model_cfg_.n_tex, model_cfg_.n_exp, model_cfg_.n_pose, model_cfg_.n_cam, model_cfg_.n_light]
+        
+        self.param_dict = {i:model_cfg_.get('n_' + i) for i in model_cfg_.param_list}
+        self.num_detail = model_cfg_.n_detail
+        self.num_cond__ = model_cfg_.n_exp + 3 # exp + jaw pose
+        
         # encoders
-        self.E_flame = ResnetEncoder(outsize=self.n_param).to(self.device) 
-        self.E_detail = ResnetEncoder(outsize=self.n_detail).to(self.device)
+        self.E_flame  = ResnetEncoder(outsize=self.num_params).to(self.device____) 
+        self.E_detail = ResnetEncoder(outsize=self.num_detail).to(self.device____)
 
         # decoders
-        self.flame = FLAME(model_cfg).to(self.device)
-        if model_cfg.use_tex:
-            self.flametex = FLAMETex(model_cfg).to(self.device)
-        self.D_detail = Generator(latent_dim=self.n_detail+self.n_cond, out_channels=1, out_scale=model_cfg.max_z, sample_mode = 'bilinear').to(self.device)
+        self.flame = FLAME(model_cfg_).to(self.device____)
+        if model_cfg_.use_tex:
+            self.flametex = FLAMETex(model_cfg_).to(self.device____)
+        self.D_detail = Generator(latent_dim=self.num_detail+self.num_cond__, out_channels=1, out_scale=model_cfg_.max_z, sample_mode = 'bilinear').to(self.device____)
         # resume model
-        model_path = self.cfg.pretrained_modelpath
+        model_path = self.config.pretrained_modelpath
         if os.path.exists(model_path):
             print(f'trained model found. load {model_path}')
             checkpoint = torch.load(model_path)
             self.checkpoint = checkpoint
-            display(self.E_flame.state_dict())
             util.copy_state_dict(self.E_flame.state_dict(), checkpoint['E_flame'])
             util.copy_state_dict(self.E_detail.state_dict(), checkpoint['E_detail'])
             util.copy_state_dict(self.D_detail.state_dict(), checkpoint['D_detail'])
@@ -102,36 +113,35 @@ class DECA(nn.Module):
         self.E_flame.eval()
         self.E_detail.eval()
         self.D_detail.eval()
-        display(checkpoint['E_flame'])
 
-    def decompose_code(self, code, num_dict):
+    def decompose_code(self, concatCode, num_dict__):
         ''' Convert a flattened parameter vector to a dictionary of parameters
-        code_dict.keys() = ['shape', 'tex', 'exp', 'pose', 'cam', 'light']
+        code_dict.keys() = [('shape',) 'tex', 'exp', 'pose', 'cam', 'light']
         '''
-        code_dict = {}
-        start = 0
-        for key in num_dict:
-            end = start+int(num_dict[key])
-            code_dict[key] = code[:, start:end]
-            start = end
+        code_dict_ = {}
+        start_ind_ = 0
+        for key in num_dict__:
+            end_ind___      = start_ind_+int(num_dict__[key])
+            code_dict_[key] = concatCode[:, start_ind_:end_ind___]
+            start_ind_      = end_ind___
             if key == 'light':
-                code_dict[key] = code_dict[key].reshape(code_dict[key].shape[0], 9, 3)
-        return code_dict
+                code_dict_[key] = code_dict_[key].reshape(code_dict_[key].shape[0], 9, 3)
+        return code_dict_
 
-    def displacement2normal(self, uv_z, coarse_verts, coarse_normals):
+    def displacement2normal(self, uv_z_map__, coarse_verts, coarse_normals):
         ''' Convert displacement map into detail normal map
         '''
-        batch_size = uv_z.shape[0]
-        uv_coarse_vertices = self.render.world2uv(coarse_verts).detach()
-        uv_coarse_normals = self.render.world2uv(coarse_normals).detach()
+        batch_size = uv_z_map__.shape[0]
+        coarsevert = self.render____.world2uv(coarse_verts).detach()
+        coarsenorm = self.render____.world2uv(coarse_normals).detach()
     
-        uv_z = uv_z*self.uv_face_eye_mask
-        uv_detail_vertices = uv_coarse_vertices + uv_z*uv_coarse_normals + self.fixed_uv_dis[None,None,:,:]*uv_coarse_normals.detach()
-        dense_vertices = uv_detail_vertices.permute(0,2,3,1).reshape([batch_size, -1, 3])
-        uv_detail_normals = util.vertex_normals(dense_vertices, self.render.dense_faces.expand(batch_size, -1, -1))
-        uv_detail_normals = uv_detail_normals.reshape([batch_size, uv_coarse_vertices.shape[2], uv_coarse_vertices.shape[3], 3]).permute(0,3,1,2)
-        uv_detail_normals = uv_detail_normals*self.uv_face_eye_mask + uv_coarse_normals*(1.-self.uv_face_eye_mask)
-        return uv_detail_normals
+        uv_z_map__ = uv_z_map__*self.uv_faceEye
+        detailvert = coarsevert + uv_z_map__*coarsenorm + self.fix_uv_dis[None,None,:,:]*coarsenorm.detach()
+        dense_vert = detailvert.permute(0,2,3,1).reshape([batch_size, -1, 3])
+        detailnorm = util.vertex_normals(dense_vert, self.render____.dense_faces.expand(batch_size, -1, -1))
+        detailnorm = detailnorm.reshape([batch_size, coarsevert.shape[2], coarsevert.shape[3], 3]).permute(0,3,1,2)
+        detailnorm = detailnorm*self.uv_faceEye + coarsenorm*(1.-self.uv_faceEye)
+        return detailnorm
 
     def visofp(self, normals):
         ''' visibility of keypoints, based on the normal direction
@@ -141,131 +151,137 @@ class DECA(nn.Module):
         return vis68
 
     # @torch.no_grad()
-    def encode(self, images, use_detail=True):
+    def encode(self, imgs_batch, use_detail=True):
         if use_detail:
             # use_detail is for training detail model, need to set coarse model as eval mode
             with torch.no_grad():
-                parameters = self.E_flame(images)
+                parameters = self.E_flame(imgs_batch)
         else:
-            parameters = self.E_flame(images)
+            parameters = self.E_flame(imgs_batch)
 
-        codedict = self.decompose_code(parameters, self.param_dict)
-        codedict['images'] = images
+        code_dict__ = self.decompose_code(parameters, self.param_dict)
+        code_dict__['images'] = imgs_batch
         if use_detail:
-            detailcode = self.E_detail(images)
-            codedict['detail'] = detailcode
-        if self.cfg.model.jaw_type == 'euler':
-            posecode = codedict['pose']
-            euler_jaw_pose = posecode[:,3:].clone() # x for yaw (open mouth), y for pitch (left ang right), z for roll
-            posecode[:,3:] = batch_euler2axis(euler_jaw_pose)
-            codedict['pose'] = posecode
-            codedict['euler_jaw_pose'] = euler_jaw_pose
-        return codedict
+            code_detail_ = self.E_detail(imgs_batch)
+            code_dict__['detail'] = code_detail_
+        if self.config.model.jaw_type == 'euler':
+            code_pose__ = code_dict__['pose']
+            euler_jaw__ = code_pose__[:,3:].clone() # x for yaw (open mouth), y for pitch (left ang right), z for roll
+            code_pose__[:,3:] = batch_euler2axis(euler_jaw__)
+            code_dict__['pose'] = code_pose__
+            code_dict__['euler_jaw_pose'] = euler_jaw__
+        return code_dict__
 
     # @torch.no_grad()
-    def decode(self, codedict, rendering=True, iddict=None, vis_lmk=True, return_vis=True, use_detail=True,
-                render_orig=False, original_image=None, tform=None):
-        images = codedict['images']
-        batch_size = images.shape[0]
+    def decode(self, code_dict__, rendering=True, iddict=None, vis_lmk=True, return_vis=True, use_detail=True,
+                render_orig=False, original_image=None, tform=None, train_bool=False, shape_params=None):
+        
+        imgs_batch = code_dict__['images']
+        batch_size = imgs_batch.shape[0]
         
         ## decode
-        verts, landmarks2d, landmarks3d = self.flame(shape_params=codedict['shape'], expression_params=codedict['exp'], pose_params=codedict['pose'])
-        if self.cfg.model.use_tex:
-            albedo = self.flametex(codedict['tex'])
+        if not train_bool:
+            verts, lmks_2dim_, lmks_3dim_ = self.flame(shape_params=code_dict__['shape'], expression_params=code_dict__['exp'], pose_params=code_dict__['pose'])
         else:
-            albedo = torch.zeros([batch_size, 3, self.uv_size, self.uv_size], device=images.device) 
-        landmarks3d_world = landmarks3d.clone()
+            verts, lmks_2dim_, lmks_3dim_ = self.flame(shape_params=shape_params, expression_params=code_dict__['exp'], pose_params=code_dict__['pose'])
+
+        
+        if self.config.model.use_tex:
+            albedo = self.flametex(code_dict__['tex'])
+        else:
+            albedo = torch.zeros([batch_size, 3, self.uv_size___, self.uv_size___], device=imgs_batch.device) 
+        landmarks3d_world = lmks_3dim_.clone()
 
         ## projection
-        landmarks2d = util.batch_orth_proj(landmarks2d, codedict['cam'])[:,:,:2]; landmarks2d[:,:,1:] = -landmarks2d[:,:,1:]#; landmarks2d = landmarks2d*self.image_size/2 + self.image_size/2
-        landmarks3d = util.batch_orth_proj(landmarks3d, codedict['cam']); landmarks3d[:,:,1:] = -landmarks3d[:,:,1:] #; landmarks3d = landmarks3d*self.image_size/2 + self.image_size/2
-        trans_verts = util.batch_orth_proj(verts, codedict['cam']); trans_verts[:,:,1:] = -trans_verts[:,:,1:]
-        opdict = {
+        lmks_2dim_ = util.batch_orth_proj(lmks_2dim_, code_dict__['cam'])[:,:,:2]; lmks_2dim_[:,:,1:] = -lmks_2dim_[:,:,1:]#; landmarks2d = landmarks2d*self.image_size/2 + self.image_size/2
+        lmks_3dim_ = util.batch_orth_proj(lmks_3dim_, code_dict__['cam']); lmks_3dim_[:,:,1:] = -lmks_3dim_[:,:,1:] #; landmarks3d = landmarks3d*self.image_size/2 + self.image_size/2
+        tran_verts = util.batch_orth_proj(verts, code_dict__['cam']); tran_verts[:,:,1:] = -tran_verts[:,:,1:]
+        optic_dict = {
             'verts': verts,
-            'trans_verts': trans_verts,
-            'landmarks2d': landmarks2d,
-            'landmarks3d': landmarks3d,
+            'trans_verts': tran_verts,
+            'landmarks2d': lmks_2dim_,
+            'landmarks3d': lmks_3dim_,
             'landmarks3d_world': landmarks3d_world,
         }
 
         ## rendering
         if return_vis and render_orig and original_image is not None and tform is not None:
-            points_scale = [self.image_size, self.image_size]
+            pts_scale_ = [self.image_size, self.image_size]
             _, _, h, w = original_image.shape
             # import ipdb; ipdb.set_trace()
-            trans_verts = transform_points(trans_verts, tform, points_scale, [h, w])
-            landmarks2d = transform_points(landmarks2d, tform, points_scale, [h, w])
-            landmarks3d = transform_points(landmarks3d, tform, points_scale, [h, w])
+            tran_verts = transform_points(tran_verts, tform, pts_scale_, [h, w])
+            lmks_2dim_ = transform_points(lmks_2dim_, tform, pts_scale_, [h, w])
+            lmks_3dim_ = transform_points(lmks_3dim_, tform, pts_scale_, [h, w])
             background = original_image
-            images = original_image
+            imgs_batch = original_image
         else:
-            h, w = self.image_size, self.image_size
+            h, w       = self.image_size, self.image_size
             background = None
 
         if rendering:
             # ops = self.render(verts, trans_verts, albedo, codedict['light'])
-            ops = self.render(verts, trans_verts, albedo, h=h, w=w, background=background)
+            ops_render = self.render____(verts, tran_verts, albedo, h=h, w=w, background=background)
             ## output
-            opdict['grid'] = ops['grid']
-            opdict['rendered_images'] = ops['images']
-            opdict['alpha_images'] = ops['alpha_images']
-            opdict['normal_images'] = ops['normal_images']
+            optic_dict['grid'] = ops_render['grid']
+            optic_dict['rendered_images'] = ops_render['images']
+            optic_dict['alpha_images'] = ops_render['alpha_images']
+            optic_dict['normal_images'] = ops_render['normal_images']
         
-        if self.cfg.model.use_tex:
-            opdict['albedo'] = albedo
+        if self.config.model.use_tex:
+            optic_dict['albedo'] = albedo
               
         if use_detail:
-            uv_z = self.D_detail(torch.cat([codedict['pose'][:,3:], codedict['exp'], codedict['detail']], dim=1))
+            uv_z_map__ = self.D_detail(torch.cat([code_dict__['pose'][:,3:], code_dict__['exp'], code_dict__['detail']], dim=1))
             if iddict is not None:
-                uv_z = self.D_detail(torch.cat([iddict['pose'][:,3:], iddict['exp'], codedict['detail']], dim=1))
-            uv_detail_normals = self.displacement2normal(uv_z, verts, ops['normals'])
-            uv_shading = self.render.add_SHlight(uv_detail_normals, codedict['light'])
+                uv_z_map__ = self.D_detail(torch.cat([iddict['pose'][:,3:], iddict['exp'], code_dict__['detail']], dim=1))
+            detailnorm = self.displacement2normal(uv_z_map__, verts, ops_render['normals'])
+            uv_shading = self.render____.add_SHlight(detailnorm, code_dict__['light'])
             uv_texture = albedo*uv_shading
 
-            opdict['uv_texture'] = uv_texture 
-            opdict['normals'] = ops['normals']
-            opdict['uv_detail_normals'] = uv_detail_normals
-            opdict['displacement_map'] = uv_z+self.fixed_uv_dis[None,None,:,:]
+            optic_dict['uv_texture'] = uv_texture 
+            optic_dict['normals'] = ops_render['normals']
+            optic_dict['uv_detail_normals'] = detailnorm
+            optic_dict['displacement_map'] = uv_z_map__+self.fix_uv_dis[None,None,:,:]
         
         if vis_lmk:
-            landmarks3d_vis = self.visofp(ops['transformed_normals'])#/self.image_size
-            landmarks3d = torch.cat([landmarks3d, landmarks3d_vis], dim=2)
-            opdict['landmarks3d'] = landmarks3d
+            lmks3d_vis = self.visofp(ops_render['transformed_normals'])#/self.image_size
+            lmks_3dim_ = torch.cat([lmks_3dim_, lmks3d_vis], dim=2)
+            optic_dict['landmarks3d'] = lmks_3dim_
 
         if return_vis:
             ## render shape
-            shape_images, _, grid, alpha_images = self.render.render_shape(verts, trans_verts, h=h, w=w, images=background, return_grid=True)
-            detail_normal_images = F.grid_sample(uv_detail_normals, grid, align_corners=False)*alpha_images
-            shape_detail_images = self.render.render_shape(verts, trans_verts, detail_normal_images=detail_normal_images, h=h, w=w, images=background)
+            shapeimgs, _, grid, alpha_imgs = self.render____.render_shape(verts, tran_verts, h=h, w=w, images=background, return_grid=True)
+            detnormimg = F.grid_sample(detailnorm, grid, align_corners=False)*alpha_imgs
+            shapdetimg = self.render____.render_shape(verts, tran_verts, detail_normal_images=detnormimg, h=h, w=w, images=background)
             
             ## extract texture
             ## TODO: current resolution 256x256, support higher resolution, and add visibility
-            uv_pverts = self.render.world2uv(trans_verts)
-            uv_gt = F.grid_sample(images, uv_pverts.permute(0,2,3,1)[:,:,:,:2], mode='bilinear', align_corners=False)
-            if self.cfg.model.use_tex:
+            uv_p_verts = self.render____.world2uv(tran_verts)
+            uv_gtverts = F.grid_sample(imgs_batch, uv_p_verts.permute(0,2,3,1)[:,:,:,:2], mode='bilinear', align_corners=False)
+            if self.config.model.use_tex:
                 ## TODO: poisson blending should give better-looking results
-                if self.cfg.model.extract_tex:
-                    uv_texture_gt = uv_gt[:,:3,:,:]*self.uv_face_eye_mask + (uv_texture[:,:3,:,:]*(1-self.uv_face_eye_mask))
+                if self.config.model.extract_tex:
+                    uv_text_gt = uv_gtverts[:,:3,:,:]*self.uv_faceEye + (uv_texture[:,:3,:,:]*(1-self.uv_faceEye))
                 else:
-                    uv_texture_gt = uv_texture[:,:3,:,:]
+                    uv_text_gt = uv_texture[:,:3,:,:]
             else:
-                uv_texture_gt = uv_gt[:,:3,:,:]*self.uv_face_eye_mask + (torch.ones_like(uv_gt[:,:3,:,:])*(1-self.uv_face_eye_mask)*0.7)
+                uv_text_gt = uv_gtverts[:,:3,:,:]*self.uv_faceEye + (torch.ones_like(uv_gtverts[:,:3,:,:])*(1-self.uv_faceEye)*0.7)
             
-            opdict['uv_texture_gt'] = uv_texture_gt
-            visdict = {
-                'inputs': images, 
-                'landmarks2d': util.tensor_vis_landmarks(images, landmarks2d),
-                'landmarks3d': util.tensor_vis_landmarks(images, landmarks3d),
-                'shape_images': shape_images,
-                'shape_detail_images': shape_detail_images
+            optic_dict['uv_texture_gt'] = uv_text_gt
+            visualdict = {
+                'inputs': imgs_batch, 
+                'landmarks2d': util.tensor_vis_landmarks(imgs_batch, lmks_2dim_),
+                'landmarks3d': util.tensor_vis_landmarks(imgs_batch, lmks_3dim_),
+                'shape_images': shapeimgs,
+                'shape_detail_images': shapdetimg
             }
-            if self.cfg.model.use_tex:
-                visdict['rendered_images'] = ops['images']
+            if self.config.model.use_tex:
+                visualdict['rendered_images'] = ops_render['images']
 
-            return opdict, visdict
+            return optic_dict, visualdict
 
         else:
-            return opdict
+            return optic_dict
 
     def visualize(self, visdict, size=224, dim=2):
         '''
@@ -292,45 +308,50 @@ class DECA(nn.Module):
         texture: [3, h, w], tensor
         '''
         i = 0
-        vertices = opdict['verts'][i].cpu().numpy()
-        faces = self.render.faces[0].cpu().numpy()
+        vertices__ = opdict['verts'][i].cpu().numpy()
+        faces_vert = self.render____.faces[0].cpu().numpy()
         
-        texture = util.tensor2image(opdict['uv_texture_gt'][i])
-        uvcoords = self.render.raw_uvcoords[0].cpu().numpy()
-        uvfaces = self.render.uvfaces[0].cpu().numpy()
+        texture___ = util.tensor2image(opdict['uv_texture_gt'][i])
+        uv_coords_ = self.render____.raw_uvcoords[0].cpu().numpy()
+        uv_faces__ = self.render____.uvfaces[0].cpu().numpy()
         # save coarse mesh, with texture and normal map
         normal_map = util.tensor2image(opdict['uv_detail_normals'][i]*0.5 + 0.5)
-        util.write_obj(filename, vertices, faces, 
-                        texture=texture, 
-                        uvcoords=uvcoords, 
-                        uvfaces=uvfaces, 
+        util.write_obj(filename, vertices__, faces_vert, 
+                        texture=texture___, 
+                        uvcoords=uv_coords_, 
+                        uvfaces=uv_faces__, 
                         normal_map=normal_map)
         # upsample mesh, save detailed mesh
-        texture = texture[:,:,[2,1,0]]
-        normals = opdict['normals'][i].cpu().numpy()
-        displacement_map = opdict['displacement_map'][i].detach().cpu().numpy().squeeze()
-        dense_vertices, dense_colors, dense_faces = util.upsample_mesh(vertices, normals, faces, displacement_map, texture, self.dense_template)
+        texture___ = texture___[:,:,[2,1,0]]
+        normals___ = opdict['normals'][i].cpu().numpy()
+        displacMap = opdict['displacement_map'][i].detach().cpu().numpy().squeeze()
+        dense_vert, dense_colo, dense_face = util.upsample_mesh(vertices__, normals___, faces_vert, displacMap, texture___, self.dense_temp)
         util.write_obj(filename.replace('.obj', '_detail.obj'), 
-                        dense_vertices, 
-                        dense_faces,
-                        colors = dense_colors,
+                        dense_vert, 
+                        dense_face,
+                        colors = dense_colo,
                         inverse_face_order=True)
-        np.savetxt(filename.replace('.obj', '_vertice.txt'), vertices)
-        np.savetxt(filename.replace('.obj', '_faces.txt'), faces)
+        np.savetxt(filename.replace('.obj', '_vertice.txt'), vertices__)
+        np.savetxt(filename.replace('.obj', '_faces.txt'), faces_vert)
         
     
     def run(self, imagepath, iscrop=True):
         ''' An api for running deca given an image path
         '''
-        testdata = datasets.TestData(imagepath)
-        images = testdata[0]['image'].to(self.device)[None,...]
-        codedict = self.encode(images)
-        opdict, visdict = self.decode(codedict)
-        return codedict, opdict, visdict
+        testdata__ = datasets.TestData(imagepath)
+        imgs_batch = testdata__[0]['image'].to(self.device____)[None,...]
+        cide_dict_ = self.encode(imgs_batch)
+        opdic_dict, visualdict = self.decode(cide_dict_)
+        return cide_dict_, opdic_dict, visualdict
 
     def model_dict(self):
+        """Returns the Dictionaries
+
+        Returns:
+            Dictionary: Dictionaries with the checkpoints for Flame and Detail 
+        """
         return {
-            'E_flame': self.E_flame.state_dict(),
+            'E_flame':  self.E_flame.state_dict(),
             'E_detail': self.E_detail.state_dict(),
             'D_detail': self.D_detail.state_dict()
         }

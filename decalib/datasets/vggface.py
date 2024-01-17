@@ -4,6 +4,11 @@ import torchvision.transforms as transforms
 import numpy as np
 import cv2
 import scipy
+from tqdm import tqdm
+from decalib.deca import DECA
+from decalib.datasets import datasets 
+from decalib.utils import util
+from decalib.utils.config import cfg as deca_cfg
 from skimage.io import imread, imsave
 from skimage.transform import estimate_transform, warp, resize, rescale
 from glob import glob
@@ -132,7 +137,7 @@ class VGGFace2HQDataset(Dataset):
         self.kptfolder = '/ps/scratch/face2d3d/train_annotated_torch7'
         self.segfolder = '/ps/scratch/face2d3d/texture_in_the_wild_code/VGGFace2_seg/test_crop_size_400_batch'
         # hq:
-        # datafile = '/ps/scratch/face2d3d/texture_in_the_wild_code/VGGFace2_cleaning_codes/ringnetpp_training_lists/second_cleaning/vggface2_bbx_size_bigger_than_400_train_list_max_normal_100_ring_5_1_serial.npy'
+        # Does not exist; doing it without data cleaning
         datafile = '/ps/scratch/face2d3d/texture_in_the_wild_code/VGGFace2_cleaning_codes/ringnetpp_training_lists/second_cleaning/vggface2_bbx_size_bigger_than_400_train_list_max_normal_100_ring_5_1_serial.npy'
         self.data_lines = np.load(datafile).astype('str')
 
@@ -147,46 +152,58 @@ class VGGFace2HQDataset(Dataset):
         return len(self.data_lines)
 
     def __getitem__(self, idx):
-        images_list = []; kpt_list = []; mask_list = []
+        images_list = []; kpt_list = []; mask_list = []; shape_list = []
 
         for i in range(self.K):
             name = self.data_lines[idx, i]
             image_path = os.path.join(self.imagefolder, name + '.jpg')  
-            seg_path = os.path.join(self.segfolder, name + '.npy')  
+            #seg_path = os.path.join(self.segfolder, name + '.npy')  
             kpt_path = os.path.join(self.kptfolder, name + '.npy')
+
+            # Calculate shape parameters
+            shape_params = self.get_shape_params(image_path)
                                             
             image = imread(image_path)/255.
             kpt = np.load(kpt_path)[:,:2]
-            mask = self.load_mask(seg_path, image.shape[0], image.shape[1])
+            #mask = self.load_mask(seg_path, image.shape[0], image.shape[1])
 
             ### crop information
             tform = self.crop(image, kpt)
             ## crop 
-            cropped_image = warp(image, tform.inverse, output_shape=(self.image_size, self.image_size))
-            cropped_mask = warp(mask, tform.inverse, output_shape=(self.image_size, self.image_size))
-            cropped_kpt = np.dot(tform.params, np.hstack([kpt, np.ones([kpt.shape[0],1])]).T).T # np.linalg.inv(tform.params)
+            cropped_imgs = warp(image, tform.inverse, output_shape=(self.image_size, self.image_size))
+            #cropped_mask = warp(mask, tform.inverse, output_shape=(self.image_size, self.image_size))
+            cropped_kpts = np.dot(tform.params, np.hstack([kpt, np.ones([kpt.shape[0],1])]).T).T # np.linalg.inv(tform.params)
 
             # normalized kpt
-            cropped_kpt[:,:2] = cropped_kpt[:,:2]/self.image_size * 2  - 1
+            cropped_kpts[:,:2] = cropped_kpts[:,:2]/self.image_size * 2  - 1
 
-            images_list.append(cropped_image.transpose(2,0,1))
-            kpt_list.append(cropped_kpt)
-            mask_list.append(cropped_mask)
+            images_list.append(cropped_imgs.transpose(2,0,1))
+            kpt_list.append(cropped_kpts)
+            #mask_list.append(cropped_mask)
+            shape_list.append(shape_params)
+
+        # Calculate mean shape parameters
+        shape_2d = torch.stack(shape_list)
+        mean_shape = torch.mean(shape_2d, dim=0).cpu().detach().numpy()
+        mean_shape_list = [mean_shape for _ in shape_list]
 
         ###
-        images_array = torch.from_numpy(np.array(images_list)).type(dtype = torch.float32) #K,224,224,3
-        kpt_array = torch.from_numpy(np.array(kpt_list)).type(dtype = torch.float32) #K,224,224,3
+        imgs_array = torch.from_numpy(np.array(images_list)).type(dtype = torch.float32) #K,224,224,3
+        kpts_array = torch.from_numpy(np.array(kpt_list)).type(dtype = torch.float32) #K,224,224,3
         mask_array = torch.from_numpy(np.array(mask_list)).type(dtype = torch.float32) #K,224,224,3
+        shapearray = torch.from_numpy(np.array(mean_shape_list)).type(dtype = torch.float32) #K,100
 
         if self.isSingle:
-            images_array = images_array.squeeze()
-            kpt_array = kpt_array.squeeze()
+            imgs_array = imgs_array.squeeze()
+            kpts_array = kpts_array.squeeze()
             mask_array = mask_array.squeeze()
+            shapearray = shapearray.squeeze()
                     
         data_dict = {
-            'image': images_array,
-            'landmark': kpt_array,
-            'mask': mask_array
+            'image':    imgs_array,
+            'landmark': kpts_array,
+            'mask':     mask_array,
+            'shape':    shapearray
         }
         
         return data_dict
@@ -227,3 +244,22 @@ class VGGFace2HQDataset(Dataset):
         else:
             mask = np.ones((h, w))
         return mask
+
+    def get_shape_params(image_path: str, device='cuda'):
+        """Function for getting the shape paramters of an image
+        """
+        # Initialization
+        deca = DECA()
+
+        #Get the data in the right format
+        test_img = datasets.TestData(image_path)
+        deca_cfg.model.use_tex = False
+        deca_cfg.model.extract_tex = False
+        #Get the codedictionarys
+        for i in tqdm(range(len(test_img))):
+            name = test_img[i]['imagename']
+            images_l = test_img[i]['image'].to(device)[None,...]
+            with torch.no_grad(): 
+                codedict = deca.encode(images_l)
+
+        return codedict['shape']

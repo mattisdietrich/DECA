@@ -64,9 +64,10 @@ class Trainer(object):
         if self.train_detail:     
             self.mrf_loss = lossfunc.IDMRFLoss()
             self.face_attr_mask = util.load_local_mask(image_size=self.cfg.model.uv_size, mode='bbx')
+        """
         else:
             self.id_loss = lossfunc.VGGFace2Loss(pretrained_model=self.cfg.model.fr_model_path)      
-        
+        """
         logger.add(os.path.join(self.cfg.output_dir, self.cfg.train.log_dir, 'train.log'))
         if self.cfg.train.write_summary:
             from torch.utils.tensorboard import SummaryWriter
@@ -112,17 +113,19 @@ class Trainer(object):
         if self.train_detail:
             self.deca.E_flame.eval()
         # [B, K, 3, size, size] ==> [BxK, 3, size, size]
-        images = batch['image'].to(self.device); images = images.view(-1, images.shape[-3], images.shape[-2], images.shape[-1]) 
-        lmk = batch['landmark'].to(self.device); lmk = lmk.view(-1, lmk.shape[-2], lmk.shape[-1])
-        masks = batch['mask'].to(self.device); masks = masks.view(-1, images.shape[-2], images.shape[-1]) 
+        imgs_batch = batch['image'].to(self.device); imgs_batch = imgs_batch.view(-1, imgs_batch.shape[-3], imgs_batch.shape[-2], imgs_batch.shape[-1]) 
+        lmks_batch = batch['landmark'].to(self.device); lmks_batch = lmks_batch.view(-1, lmks_batch.shape[-2], lmks_batch.shape[-1])
+        #mask_batch = batch['mask'].to(self.device); mask_batch = mask_batch.view(-1, imgs_batch.shape[-2], imgs_batch.shape[-1]) 
+        shapebatch = batch['shape']
 
         #-- encoder
-        codedict = self.deca.encode(images, use_detail=self.train_detail)
+        codedict = self.deca.encode(imgs_batch, use_detail=self.train_detail)
         
         ### shape constraints for coarse model
         ### detail consistency for detail model
         # import ipdb; ipdb.set_trace()
-        if self.cfg.loss.shape_consistency or self.cfg.loss.detail_consistency:
+        
+        if self.cfg.loss.detail_consistency:
             '''
             make sure s0, s1 is something to make shape close
             the difference from ||so - s1|| is 
@@ -130,32 +133,32 @@ class Trainer(object):
             '''
             new_order = np.array([np.random.permutation(self.K) + i*self.K for i in range(self.batch_size)])
             new_order = new_order.flatten()
-            shapecode = codedict['shape']
+            shapecode = shapebatch
             if self.train_detail:
                 detailcode = codedict['detail']
                 detailcode_new = detailcode[new_order]
                 codedict['detail'] = torch.cat([detailcode, detailcode_new], dim=0)
-                codedict['shape'] = torch.cat([shapecode, shapecode], dim=0)
+                shapebatch = torch.cat([shapecode, shapecode], dim=0)
             else:
                 shapecode_new = shapecode[new_order]
-                codedict['shape'] = torch.cat([shapecode, shapecode_new], dim=0)
+                shapebatch = torch.cat([shapecode, shapecode_new], dim=0)
             for key in ['tex', 'exp', 'pose', 'cam', 'light', 'images']:
                 code = codedict[key]
                 codedict[key] = torch.cat([code, code], dim=0)
             ## append gt
-            images = torch.cat([images, images], dim=0)# images = images.view(-1, images.shape[-3], images.shape[-2], images.shape[-1]) 
-            lmk = torch.cat([lmk, lmk], dim=0) #lmk = lmk.view(-1, lmk.shape[-2], lmk.shape[-1])
-            masks = torch.cat([masks, masks], dim=0)
-
-        batch_size = images.shape[0]
+            imgs_batch = torch.cat([imgs_batch, imgs_batch], dim=0)# images = images.view(-1, images.shape[-3], images.shape[-2], images.shape[-1]) 
+            lmks_batch = torch.cat([lmks_batch, lmks_batch], dim=0) #lmk = lmk.view(-1, lmk.shape[-2], lmk.shape[-1])
+            #mask_batch = torch.cat([mask_batch, mask_batch], dim=0)
+        
+        batch_size = imgs_batch.shape[0]
 
         ###--------------- training coarse model
         if not self.train_detail:
             #-- decoder
             rendering = True if self.cfg.loss.photo>0 else False
             opdict = self.deca.decode(codedict, rendering = rendering, vis_lmk=False, return_vis=False, use_detail=False)
-            opdict['images'] = images
-            opdict['lmk'] = lmk
+            opdict['images'] = imgs_batch
+            opdict['lmk'] = lmks_batch
 
             if self.cfg.loss.photo > 0.:
                 #------ rendering
@@ -171,28 +174,28 @@ class Trainer(object):
             ############################# base shape
             predicted_landmarks = opdict['landmarks2d']
             if self.cfg.loss.useWlmk:
-                losses['landmark'] = lossfunc.weighted_landmark_loss(predicted_landmarks, lmk)*self.cfg.loss.lmk
+                losses['landmark'] = lossfunc.weighted_landmark_loss(predicted_landmarks, lmks_batch)*self.cfg.loss.lmk
             else:    
-                losses['landmark'] = lossfunc.landmark_loss(predicted_landmarks, lmk)*self.cfg.loss.lmk
+                losses['landmark'] = lossfunc.landmark_loss(predicted_landmarks, lmks_batch)*self.cfg.loss.lmk
             if self.cfg.loss.eyed > 0.:
-                losses['eye_distance'] = lossfunc.eyed_loss(predicted_landmarks, lmk)*self.cfg.loss.eyed
+                losses['eye_distance'] = lossfunc.eyed_loss(predicted_landmarks, lmks_batch)*self.cfg.loss.eyed
             if self.cfg.loss.lipd > 0.:
-                losses['lip_distance'] = lossfunc.lipd_loss(predicted_landmarks, lmk)*self.cfg.loss.lipd
+                losses['lip_distance'] = lossfunc.lipd_loss(predicted_landmarks, lmks_batch)*self.cfg.loss.lipd
             
             if self.cfg.loss.photo > 0.:
-                if self.cfg.loss.useSeg:
-                    masks = masks[:,None,:,:]
+                if self.cfg.loss.useSeg: #is False
+                    mask_batch = mask_batch[:,None,:,:]
                 else:
-                    masks = mask_face_eye*opdict['alpha_images']
-                losses['photometric_texture'] = (masks*(predicted_images - images).abs()).mean()*self.cfg.loss.photo
-
+                    mask_batch = mask_face_eye*opdict['alpha_images']
+                losses['photometric_texture'] = (mask_batch*(predicted_images - imgs_batch).abs()).mean()*self.cfg.loss.photo
+            """Using no shape
+            
             if self.cfg.loss.id > 0.:
                 shading_images = self.deca.render.add_SHlight(opdict['normal_images'], codedict['light'].detach())
                 albedo_images = F.grid_sample(opdict['albedo'].detach(), opdict['grid'], align_corners=False)
                 overlay = albedo_images*shading_images*mask_face_eye + images*(1-mask_face_eye)
                 losses['identity'] = self.id_loss(overlay, images) * self.cfg.loss.id
-            
-            losses['shape_reg'] = (torch.sum(codedict['shape']**2)/2)*self.cfg.loss.reg_shape
+            """
             losses['expression_reg'] = (torch.sum(codedict['exp']**2)/2)*self.cfg.loss.reg_exp
             losses['tex_reg'] = (torch.sum(codedict['tex']**2)/2)*self.cfg.loss.reg_tex
             losses['light_reg'] = ((torch.mean(codedict['light'], dim=2)[:,:,None] - codedict['light'])**2).mean()*self.cfg.loss.reg_light
@@ -205,7 +208,7 @@ class Trainer(object):
         ###--------------- training detail model
         else:
             #-- decoder
-            shapecode = codedict['shape']
+            shapecode = shapebatch
             expcode = codedict['exp']
             posecode = codedict['pose']
             texcode = codedict['tex']
@@ -214,6 +217,7 @@ class Trainer(object):
             cam = codedict['cam']
 
             # FLAME - world space
+            #TODO Change shape_params to predefined shape parameters
             verts, landmarks2d, landmarks3d = self.deca.flame(shape_params=shapecode, expression_params=expcode, pose_params=posecode)
             landmarks2d = util.batch_orth_proj(landmarks2d, codedict['cam'])[:,:,:2]; landmarks2d[:,:,1:] = -landmarks2d[:,:,1:] #; landmarks2d = landmarks2d*self.image_size/2 + self.image_size/2
             # world to camera
@@ -232,7 +236,7 @@ class Trainer(object):
             # images
             predicted_images = ops['images']*mask_face_eye*ops['alpha_images']
 
-            masks = masks[:,None,:,:]
+            mask_batch = mask_face_eye*ops['alpha_images']
 
             uv_z = self.deca.D_detail(torch.cat([posecode[:,3:], expcode, detailcode], dim=1))
             # render detail
@@ -243,7 +247,7 @@ class Trainer(object):
 
             #--- extract texture
             uv_pverts = self.deca.render.world2uv(trans_verts).detach()
-            uv_gt = F.grid_sample(torch.cat([images, masks], dim=1), uv_pverts.permute(0,2,3,1)[:,:,:,:2], mode='bilinear', align_corners=False)
+            uv_gt = F.grid_sample(torch.cat([imgs_batch, mask_batch], dim=1), uv_pverts.permute(0,2,3,1)[:,:,:,:2], mode='bilinear', align_corners=False)
             uv_texture_gt = uv_gt[:,:3,:,:].detach(); uv_mask_gt = uv_gt[:,3:,:,:].detach()
             # self-occlusion
             normals = util.vertex_normals(trans_verts, self.deca.render.faces.expand(batch_size, -1, -1))
@@ -281,8 +285,8 @@ class Trainer(object):
                 'landmarks2d': landmarks2d,
                 'predicted_images': predicted_images,
                 'predicted_detail_images': predicted_detail_images,
-                'images': images,
-                'lmk': lmk
+                'images': imgs_batch,
+                'lmk': lmks_batch
             }
             
         #########################################################
