@@ -2,4 +2,8 @@
 /TestResults
 /TestSamples
 /data
-*.pyc
+/configs
+/logs
+/train_images
+/val_images
+__pycache__/
