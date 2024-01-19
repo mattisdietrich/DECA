@@ -39,6 +39,8 @@ from .utils.config import cfg
 torch.backends.cudnn.benchmark = True
 from .utils import lossfunc
 from .datasets import build_datasets
+import warnings
+from IPython.display import display
 
 class Trainer(object):
     def __init__(self, model, config=None, device='cuda:0'):
@@ -53,7 +55,8 @@ class Trainer(object):
         self.K = self.cfg.dataset.K
         # training stage: coarse and detail
         self.train_detail = self.cfg.train.train_detail
-
+        # For Multiprocessing
+        warnings.simplefilter("ignore")
         # deca model
         self.deca = model.to(self.device)
         self.configure_optimizers()
@@ -116,11 +119,12 @@ class Trainer(object):
         imgs_batch = batch['image'].to(self.device); imgs_batch = imgs_batch.view(-1, imgs_batch.shape[-3], imgs_batch.shape[-2], imgs_batch.shape[-1]) 
         lmks_batch = batch['landmark'].to(self.device); lmks_batch = lmks_batch.view(-1, lmks_batch.shape[-2], lmks_batch.shape[-1])
         #mask_batch = batch['mask'].to(self.device); mask_batch = mask_batch.view(-1, imgs_batch.shape[-2], imgs_batch.shape[-1]) 
-        shapebatch = batch['shape']
+        shapebatch = batch['shape'].to(self.device); shapebatch = shapebatch.view(-1, shapebatch.shape[-2], shapebatch.shape[-1])
+        shapebatch = shapebatch.squeeze()
 
         #-- encoder
         codedict = self.deca.encode(imgs_batch, use_detail=self.train_detail)
-        
+
         ### shape constraints for coarse model
         ### detail consistency for detail model
         # import ipdb; ipdb.set_trace()
@@ -134,6 +138,7 @@ class Trainer(object):
             new_order = np.array([np.random.permutation(self.K) + i*self.K for i in range(self.batch_size)])
             new_order = new_order.flatten()
             shapecode = shapebatch
+
             if self.train_detail:
                 detailcode = codedict['detail']
                 detailcode_new = detailcode[new_order]
@@ -156,7 +161,7 @@ class Trainer(object):
         if not self.train_detail:
             #-- decoder
             rendering = True if self.cfg.loss.photo>0 else False
-            opdict = self.deca.decode(codedict, rendering = rendering, vis_lmk=False, return_vis=False, use_detail=False)
+            opdict = self.deca.decode(codedict, rendering = rendering, vis_lmk=False, return_vis=False, use_detail=False, train_bool=True, shape_params = shapebatch)
             opdict['images'] = imgs_batch
             opdict['lmk'] = lmks_batch
 
@@ -305,9 +310,11 @@ class Trainer(object):
             self.val_iter = iter(self.val_dataloader)
             batch = next(self.val_iter)
         images = batch['image'].to(self.device); images = images.view(-1, images.shape[-3], images.shape[-2], images.shape[-1]) 
+        shapebatch = batch['shape'].to(self.device); shapebatch = shapebatch.view(-1, shapebatch.shape[-2], shapebatch.shape[-1])
+        shapebatch = shapebatch.squeeze()
         with torch.no_grad():
             codedict = self.deca.encode(images)
-            opdict, visdict = self.deca.decode(codedict)
+            opdict, visdict = self.deca.decode(codedict, train_bool=True, shape_params=shapebatch)
         savepath = os.path.join(self.cfg.output_dir, self.cfg.train.val_vis_dir, f'{self.global_step:08}.jpg')
         grid_image = util.visualize_grid(visdict, savepath, return_gird=True)
         self.writer.add_image('val_images', (grid_image/255.).astype(np.float32).transpose(2,0,1), self.global_step)
@@ -365,7 +372,7 @@ class Trainer(object):
     def prepare_data(self):
         self.train_dataset = build_datasets.build_train(self.cfg.dataset)
         self.val_dataset = build_datasets.build_val(self.cfg.dataset)
-        logger.info('---- training data numbers: ', len(self.train_dataset))
+        logger.info(f'---- training data numbers: {len(self.train_dataset)}' )
 
         self.train_dataloader = DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True,
                             num_workers=self.cfg.dataset.num_workers,
@@ -379,8 +386,10 @@ class Trainer(object):
         self.val_iter = iter(self.val_dataloader)
 
     def fit(self):
+        # Setup data for training
         self.prepare_data()
 
+        
         iters_every_epoch = int(len(self.train_dataset)/self.batch_size)
         start_epoch = self.global_step//iters_every_epoch
         for epoch in range(start_epoch, self.cfg.train.max_epochs):
@@ -394,8 +403,8 @@ class Trainer(object):
                     self.train_iter = iter(self.train_dataloader)
                     batch = next(self.train_iter)
                 losses, opdict = self.training_step(batch, step)
-                if self.global_step % self.cfg.train.log_steps == 0:
-                    loss_info = f"ExpName: {self.cfg.exp_name} \nEpoch: {epoch}, Iter: {step}/{iters_every_epoch}, Time: {datetime.now().strftime('%Y-%m-%d-%H:%M:%S')} \n"
+                if self.global_step % self.cfg.train.log_steps == 0: # {self.cfg.exp_name} 
+                    loss_info = f"ExpName: \nEpoch: {epoch}, Iter: {step}/{iters_every_epoch}, Time: {datetime.now().strftime('%Y-%m-%d-%H:%M:%S')} \n"
                     for k, v in losses.items():
                         loss_info = loss_info + f'{k}: {v:.4f}, '
                         if self.cfg.train.write_summary:
@@ -435,8 +444,8 @@ class Trainer(object):
                 if self.global_step % self.cfg.train.val_steps == 0:
                     self.validation_step()
                 
-                if self.global_step % self.cfg.train.eval_steps == 0:
-                    self.evaluate()
+                #if self.global_step % self.cfg.train.eval_steps == 0:
+                #    self.evaluate()
 
                 all_loss = losses['all_loss']
                 self.opt.zero_grad(); all_loss.backward(); self.opt.step()
