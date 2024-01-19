@@ -31,7 +31,7 @@ def get_group_and_exp_size(codedict_path):
 
     return group_size, expressions
 
-def get_params(codedict_path, exp_size=50, pose_size=6, shape_size=100):
+def get_params(codedict_path, exp_size=50, pose_size=6, shape_size=100, add_path=""):
     """
     Extract expression, pose, and shape parameters from codedict files.
 
@@ -64,7 +64,7 @@ def get_params(codedict_path, exp_size=50, pose_size=6, shape_size=100):
     for fp in os.listdir(codedict_path):
         pattern = r"_(\d+)$"
         match = re.search(pattern, fp)
-        if match:
+        if match and pattern != "_7":
             num_rec = int(match.group(1))
             smallest_num = min(smallest_num, num_rec)
     
@@ -81,13 +81,13 @@ def get_params(codedict_path, exp_size=50, pose_size=6, shape_size=100):
                 match = re.search(pattern, fp_exp)
                 if match:
                     num_exp = int(match.group(1))
-                    codedict = torch.load(os.path.join(codedict_path,fp,fp_exp,fp_exp+"_codedict.pth"))
-                    exp_params_left[num_exp - 1, num_rec - smallest_num] = np.array(codedict["left"]["exp"].cpu())[:exp_size]
-                    exp_params_right[num_exp - 1, num_rec - smallest_num] = np.array(codedict["right"]["exp"].cpu())[:exp_size]
-                    pose_params_left[num_exp - 1, num_rec - smallest_num] = np.array(codedict["left"]["pose"].cpu())[:pose_size]
-                    pose_params_right[num_exp - 1, num_rec - smallest_num] = np.array(codedict["right"]["pose"].cpu())[:pose_size]
-                    shape_params_left[num_exp - 1, num_rec - smallest_num] = np.array(codedict["left"]["shape"].cpu())[:shape_size]
-                    shape_params_right[num_exp - 1, num_rec - smallest_num] = np.array(codedict["right"]["shape"].cpu())[:shape_size]
+                    codedict = torch.load(os.path.join(codedict_path,fp,fp_exp,fp_exp+f"{add_path}_codedict.pth"))
+                    exp_params_left[num_exp - 1, num_rec - smallest_num - 1] = np.array(codedict["left"]["exp"].cpu())[:exp_size]
+                    exp_params_right[num_exp - 1, num_rec - smallest_num - 1] = np.array(codedict["right"]["exp"].cpu())[:exp_size]
+                    pose_params_left[num_exp - 1, num_rec - smallest_num - 1] = np.array(codedict["left"]["pose"].cpu())[:pose_size]
+                    pose_params_right[num_exp - 1, num_rec - smallest_num - 1] = np.array(codedict["right"]["pose"].cpu())[:pose_size]
+                    shape_params_left[num_exp - 1, num_rec - smallest_num - 1] = np.array(codedict["left"]["shape"].cpu())[:shape_size]
+                    shape_params_right[num_exp - 1, num_rec - smallest_num - 1] = np.array(codedict["right"]["shape"].cpu())[:shape_size]
 
     return [exp_params_left, exp_params_right, pose_params_left, pose_params_right, shape_params_left, shape_params_right]
 
