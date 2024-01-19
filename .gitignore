@@ -7,3 +7,4 @@
 /train_images
 /val_images
 __pycache__/
+**/*.pyc
