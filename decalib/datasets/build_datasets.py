@@ -35,7 +35,7 @@ def build_train(config, is_train=True):
 
 def build_val(config, is_train=True):
     data_list = []
-    if 'vggface2' in config.eval_data:
+    if 'vggface2hq' in config.eval_data:
         data_list.append(VGGFace2HQDataset(isEval=True, K=config.K, image_size=config.image_size, scale=[config.scale_min, config.scale_max], trans_scale=config.trans_scale, isSingle=config.isSingle))
     if 'now' in config.eval_data:
         data_list.append(NoWDataset())

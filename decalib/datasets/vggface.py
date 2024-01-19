@@ -133,12 +133,15 @@ class VGGFace2HQDataset(Dataset):
         '''
         self.K = K
         self.image_size = image_size
-        self.imagefolder = '/ps/scratch/face2d3d/train'
-        self.kptfolder = '/ps/scratch/face2d3d/train_annotated_torch7'
-        self.segfolder = '/ps/scratch/face2d3d/texture_in_the_wild_code/VGGFace2_seg/test_crop_size_400_batch'
+        self.imagefolder = '/home/dietrich/Testing/DECA/Dataset/VGGFACE/Images/VGGface2_None_norm_512_true_bygfpgan'
+        self.kptfolder = '/home/dietrich/Testing/DECA/Dataset/VGGFACE/lmks_train'
+        self.shapefolder = '/home/dietrich/Testing/DECA/Dataset/VGGFACE/shape_train'
+        # self.segfolder = '/ps/scratch/face2d3d/texture_in_the_wild_code/VGGFace2_seg/test_crop_size_400_batch'
         # hq:
         # Does not exist; doing it without data cleaning
-        datafile = '/ps/scratch/face2d3d/texture_in_the_wild_code/VGGFace2_cleaning_codes/ringnetpp_training_lists/second_cleaning/vggface2_bbx_size_bigger_than_400_train_list_max_normal_100_ring_5_1_serial.npy'
+        datafile = '/home/dietrich/Testing/DECA/Dataset/VGGFACE/data_names_6_per_individual_train.npy'
+        if isEval:
+            datafile = '/home/dietrich/Testing/DECA/Dataset/VGGFACE/data_names_6_per_individual_valid.npy'
         self.data_lines = np.load(datafile).astype('str')
 
         self.isTemporal = isTemporal
@@ -158,13 +161,12 @@ class VGGFace2HQDataset(Dataset):
             name = self.data_lines[idx, i]
             image_path = os.path.join(self.imagefolder, name + '.jpg')  
             #seg_path = os.path.join(self.segfolder, name + '.npy')  
-            kpt_path = os.path.join(self.kptfolder, name + '.npy')
-
-            # Calculate shape parameters
-            shape_params = self.get_shape_params(image_path)
+            kpt_path = os.path.join(self.kptfolder, name + '_68kpts.npy')
+            shape_path = os.path.join(self.shapefolder, name + '.npy')
                                             
             image = imread(image_path)/255.
             kpt = np.load(kpt_path)[:,:2]
+            shape = np.load(shape_path)
             #mask = self.load_mask(seg_path, image.shape[0], image.shape[1])
 
             ### crop information
@@ -180,18 +182,13 @@ class VGGFace2HQDataset(Dataset):
             images_list.append(cropped_imgs.transpose(2,0,1))
             kpt_list.append(cropped_kpts)
             #mask_list.append(cropped_mask)
-            shape_list.append(shape_params)
-
-        # Calculate mean shape parameters
-        shape_2d = torch.stack(shape_list)
-        mean_shape = torch.mean(shape_2d, dim=0).cpu().detach().numpy()
-        mean_shape_list = [mean_shape for _ in shape_list]
+            shape_list.append(shape)
 
         ###
         imgs_array = torch.from_numpy(np.array(images_list)).type(dtype = torch.float32) #K,224,224,3
         kpts_array = torch.from_numpy(np.array(kpt_list)).type(dtype = torch.float32) #K,224,224,3
         mask_array = torch.from_numpy(np.array(mask_list)).type(dtype = torch.float32) #K,224,224,3
-        shapearray = torch.from_numpy(np.array(mean_shape_list)).type(dtype = torch.float32) #K,100
+        shapearray = torch.from_numpy(np.array(shape_list)).type(dtype = torch.float32) #K,100
 
         if self.isSingle:
             imgs_array = imgs_array.squeeze()
@@ -244,22 +241,3 @@ class VGGFace2HQDataset(Dataset):
         else:
             mask = np.ones((h, w))
         return mask
-
-    def get_shape_params(image_path: str, device='cuda'):
-        """Function for getting the shape paramters of an image
-        """
-        # Initialization
-        deca = DECA()
-
-        #Get the data in the right format
-        test_img = datasets.TestData(image_path)
-        deca_cfg.model.use_tex = False
-        deca_cfg.model.extract_tex = False
-        #Get the codedictionarys
-        for i in tqdm(range(len(test_img))):
-            name = test_img[i]['imagename']
-            images_l = test_img[i]['image'].to(device)[None,...]
-            with torch.no_grad(): 
-                codedict = deca.encode(images_l)
-
-        return codedict['shape']

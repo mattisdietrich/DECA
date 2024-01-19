@@ -18,7 +18,6 @@ import torch.nn as nn
 import torch
 import torch.nn.functional as F
 from . import resnet
-from IPython.display import display
 
 class ResnetEncoder(nn.Module):
     def __init__(self, outsize, last_op=None):
@@ -38,5 +37,4 @@ class ResnetEncoder(nn.Module):
         parameters = self.layers(features)
         if self.last_op:
             parameters = self.last_op(parameters)
-        display(f"Parameters Shape: {parameters.shape}")
         return parameters
