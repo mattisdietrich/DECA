@@ -37,6 +37,7 @@ from .utils.config import cfg as config_default
 from .utils.config_train import config_train
 torch.backends.cudnn.benchmark = True
 from IPython.display import display
+import multiprocessing as mp
 
 class DECA(nn.Module):
     def __init__(self, config_build=None, device='cuda', train_bool=False):
@@ -58,11 +59,11 @@ class DECA(nn.Module):
 
     def _setup_renderer(self, model_cfg_):
         set_rasterizer(self.config.rasterizer_type)
-        self.render____ = SRenderY(self.image_size, obj_filename=model_cfg_.topology_path, uv_size=model_cfg_.uv_size, rasterizer_type=self.config.rasterizer_type).to(self.device____)
+        self.render = SRenderY(self.image_size, obj_filename=model_cfg_.topology_path, uv_size=model_cfg_.uv_size, rasterizer_type=self.config.rasterizer_type).to(self.device____)
         # face mask for rendering details
         msk_render = imread(model_cfg_.face_eye_mask_path).astype(np.float32)/255.
         msk_render = torch.from_numpy(msk_render[:,:,0])[None,None,:,:].contiguous()
-        self.uv_faceEye = F.interpolate(msk_render, [model_cfg_.uv_size, model_cfg_.uv_size]).to(self.device____)
+        self.uv_face_eye_mask = F.interpolate(msk_render, [model_cfg_.uv_size, model_cfg_.uv_size]).to(self.device____)
         msk_render = imread(model_cfg_.face_mask_path).astype(np.float32)/255.
         msk_render = torch.from_numpy(msk_render[:,:,0])[None,None,:,:].contiguous()
         self.uv_face___ = F.interpolate(msk_render, [model_cfg_.uv_size, model_cfg_.uv_size]).to(self.device____)
@@ -100,7 +101,7 @@ class DECA(nn.Module):
         # resume model
         model_path = self.config.pretrained_modelpath
         if os.path.exists(model_path):
-            print(f'trained model found. load {model_path}')
+            #print(f'trained model found. load {model_path}')
             checkpoint = torch.load(model_path)
             self.checkpoint = checkpoint
             util.copy_state_dict(self.E_flame.state_dict(), checkpoint['E_flame'])
@@ -132,15 +133,15 @@ class DECA(nn.Module):
         ''' Convert displacement map into detail normal map
         '''
         batch_size = uv_z_map__.shape[0]
-        coarsevert = self.render____.world2uv(coarse_verts).detach()
-        coarsenorm = self.render____.world2uv(coarse_normals).detach()
+        coarsevert = self.render.world2uv(coarse_verts).detach()
+        coarsenorm = self.render.world2uv(coarse_normals).detach()
     
-        uv_z_map__ = uv_z_map__*self.uv_faceEye
+        uv_z_map__ = uv_z_map__*self.uv_face_eye_mask
         detailvert = coarsevert + uv_z_map__*coarsenorm + self.fix_uv_dis[None,None,:,:]*coarsenorm.detach()
         dense_vert = detailvert.permute(0,2,3,1).reshape([batch_size, -1, 3])
-        detailnorm = util.vertex_normals(dense_vert, self.render____.dense_faces.expand(batch_size, -1, -1))
+        detailnorm = util.vertex_normals(dense_vert, self.render.dense_faces.expand(batch_size, -1, -1))
         detailnorm = detailnorm.reshape([batch_size, coarsevert.shape[2], coarsevert.shape[3], 3]).permute(0,3,1,2)
-        detailnorm = detailnorm*self.uv_faceEye + coarsenorm*(1.-self.uv_faceEye)
+        detailnorm = detailnorm*self.uv_face_eye_mask + coarsenorm*(1.-self.uv_face_eye_mask)
         return detailnorm
 
     def visofp(self, normals):
@@ -220,7 +221,7 @@ class DECA(nn.Module):
 
         if rendering:
             # ops = self.render(verts, trans_verts, albedo, codedict['light'])
-            ops_render = self.render____(verts, tran_verts, albedo, h=h, w=w, background=background)
+            ops_render = self.render(verts, tran_verts, albedo, h=h, w=w, background=background)
             ## output
             optic_dict['grid'] = ops_render['grid']
             optic_dict['rendered_images'] = ops_render['images']
@@ -235,7 +236,7 @@ class DECA(nn.Module):
             if iddict is not None:
                 uv_z_map__ = self.D_detail(torch.cat([iddict['pose'][:,3:], iddict['exp'], code_dict__['detail']], dim=1))
             detailnorm = self.displacement2normal(uv_z_map__, verts, ops_render['normals'])
-            uv_shading = self.render____.add_SHlight(detailnorm, code_dict__['light'])
+            uv_shading = self.render.add_SHlight(detailnorm, code_dict__['light'])
             uv_texture = albedo*uv_shading
 
             optic_dict['uv_texture'] = uv_texture 
@@ -250,22 +251,22 @@ class DECA(nn.Module):
 
         if return_vis:
             ## render shape
-            shapeimgs, _, grid, alpha_imgs = self.render____.render_shape(verts, tran_verts, h=h, w=w, images=background, return_grid=True)
+            shapeimgs, _, grid, alpha_imgs = self.render.render_shape(verts, tran_verts, h=h, w=w, images=background, return_grid=True)
             detnormimg = F.grid_sample(detailnorm, grid, align_corners=False)*alpha_imgs
-            shapdetimg = self.render____.render_shape(verts, tran_verts, detail_normal_images=detnormimg, h=h, w=w, images=background)
+            shapdetimg = self.render.render_shape(verts, tran_verts, detail_normal_images=detnormimg, h=h, w=w, images=background)
             
             ## extract texture
             ## TODO: current resolution 256x256, support higher resolution, and add visibility
-            uv_p_verts = self.render____.world2uv(tran_verts)
+            uv_p_verts = self.render.world2uv(tran_verts)
             uv_gtverts = F.grid_sample(imgs_batch, uv_p_verts.permute(0,2,3,1)[:,:,:,:2], mode='bilinear', align_corners=False)
             if self.config.model.use_tex:
                 ## TODO: poisson blending should give better-looking results
                 if self.config.model.extract_tex:
-                    uv_text_gt = uv_gtverts[:,:3,:,:]*self.uv_faceEye + (uv_texture[:,:3,:,:]*(1-self.uv_faceEye))
+                    uv_text_gt = uv_gtverts[:,:3,:,:]*self.uv_face_eye_mask + (uv_texture[:,:3,:,:]*(1-self.uv_face_eye_mask))
                 else:
                     uv_text_gt = uv_texture[:,:3,:,:]
             else:
-                uv_text_gt = uv_gtverts[:,:3,:,:]*self.uv_faceEye + (torch.ones_like(uv_gtverts[:,:3,:,:])*(1-self.uv_faceEye)*0.7)
+                uv_text_gt = uv_gtverts[:,:3,:,:]*self.uv_face_eye_mask + (torch.ones_like(uv_gtverts[:,:3,:,:])*(1-self.uv_face_eye_mask)*0.7)
             
             optic_dict['uv_texture_gt'] = uv_text_gt
             visualdict = {
@@ -309,11 +310,11 @@ class DECA(nn.Module):
         '''
         i = 0
         vertices__ = opdict['verts'][i].cpu().numpy()
-        faces_vert = self.render____.faces[0].cpu().numpy()
+        faces_vert = self.render.faces[0].cpu().numpy()
         
         texture___ = util.tensor2image(opdict['uv_texture_gt'][i])
-        uv_coords_ = self.render____.raw_uvcoords[0].cpu().numpy()
-        uv_faces__ = self.render____.uvfaces[0].cpu().numpy()
+        uv_coords_ = self.render.raw_uvcoords[0].cpu().numpy()
+        uv_faces__ = self.render.uvfaces[0].cpu().numpy()
         # save coarse mesh, with texture and normal map
         normal_map = util.tensor2image(opdict['uv_detail_normals'][i]*0.5 + 0.5)
         util.write_obj(filename, vertices__, faces_vert, 
