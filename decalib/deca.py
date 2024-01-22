@@ -34,27 +34,28 @@ from .utils.rotation_converter import batch_euler2axis
 from .utils.tensor_cropper import transform_points
 from .datasets import datasets
 from .utils.config import cfg as config_default
-from .utils.config_train import config_train
 torch.backends.cudnn.benchmark = True
 from IPython.display import display
 import multiprocessing as mp
 
 class DECA(nn.Module):
-    def __init__(self, config_build=None, device='cuda', train_bool=False):
+    def __init__(self, config_build=None, device='cuda'):
         super(DECA, self).__init__()
         if config_build is None:
-            if not train_bool:
-                self.config = config_default
-            else:
-                self.config = config_train
+            self.config = config_default
         else:
             self.config = config_build
+        if self.config.train_mode == 'without_shape':
+            self.train_bool = True
+        else:
+            self.train_bool = False
+
 
         self.device____ = device
         self.image_size = self.config.dataset.image_size
         self.uv_size___ = self.config.model.uv_size
 
-        self._create_model__(self.config.model, train_bool)
+        self._create_model__(self.config.model, self.train_bool)
         self._setup_renderer(self.config.model)
 
     def _setup_renderer(self, model_cfg_):
@@ -76,9 +77,9 @@ class DECA(nn.Module):
         # dense mesh template, for save detail mesh
         self.dense_temp = np.load(model_cfg_.dense_template_path, allow_pickle=True, encoding='latin1').item()
 
-    def _create_model__(self, model_cfg_, train_bool):
+    def _create_model__(self, model_cfg_):
         # set up parameters
-        if not train_bool:
+        if not self.train_bool:
             self.num_params = model_cfg_.n_shape+model_cfg_.n_tex+model_cfg_.n_exp+model_cfg_.n_pose+model_cfg_.n_cam+model_cfg_.n_light
             self.num_list__ = [model_cfg_.n_shape, model_cfg_.n_tex, model_cfg_.n_exp, model_cfg_.n_pose, model_cfg_.n_cam, model_cfg_.n_light]
         else:
@@ -175,13 +176,13 @@ class DECA(nn.Module):
 
     # @torch.no_grad()
     def decode(self, code_dict__, rendering=True, iddict=None, vis_lmk=True, return_vis=True, use_detail=True,
-                render_orig=False, original_image=None, tform=None, train_bool=False, shape_params=None):
+                render_orig=False, original_image=None, tform=None, shape_params=None):
         
         imgs_batch = code_dict__['images']
         batch_size = imgs_batch.shape[0]
         
         ## decode
-        if not train_bool:
+        if not self.train_bool:
             verts, lmks_2dim_, lmks_3dim_ = self.flame(shape_params=code_dict__['shape'], expression_params=code_dict__['exp'], pose_params=code_dict__['pose'])
         else:
             verts, lmks_2dim_, lmks_3dim_ = self.flame(shape_params=shape_params, expression_params=code_dict__['exp'], pose_params=code_dict__['pose'])
