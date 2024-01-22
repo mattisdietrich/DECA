@@ -1,6 +1,6 @@
 from decalib.deca import DECA
 from decalib.trainer import Trainer
-from decalib.utils.config_train import config_train as cfg
+from decalib.utils.config import cfg as cfg
 import yaml
 import shutil
 import torch.backends.cudnn as cudnn
