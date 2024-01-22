@@ -161,7 +161,7 @@ class Trainer(object):
         if not self.train_detail:
             #-- decoder
             rendering = True if self.cfg.loss.photo>0 else False
-            opdict = self.deca.decode(codedict, rendering = rendering, vis_lmk=False, return_vis=False, use_detail=False, train_bool=True, shape_params = shapebatch)
+            opdict = self.deca.decode(codedict, rendering = rendering, vis_lmk=False, return_vis=False, use_detail=False, shape_params = shapebatch)
             opdict['images'] = imgs_batch
             opdict['lmk'] = lmks_batch
 
@@ -314,7 +314,7 @@ class Trainer(object):
         shapebatch = shapebatch.squeeze()
         with torch.no_grad():
             codedict = self.deca.encode(images)
-            opdict, visdict = self.deca.decode(codedict, train_bool=True, shape_params=shapebatch)
+            opdict, visdict = self.deca.decode(codedict, shape_params=shapebatch)
         savepath = os.path.join(self.cfg.output_dir, self.cfg.train.val_vis_dir, f'{self.global_step:08}.jpg')
         grid_image = util.visualize_grid(visdict, savepath, return_gird=True)
         self.writer.add_image('val_images', (grid_image/255.).astype(np.float32).transpose(2,0,1), self.global_step)

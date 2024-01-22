@@ -8,3 +8,5 @@
 /val_images
 __pycache__/
 **/*.pyc
+decalib/__pycache__/__init__.cpython-39.pyc
+decalib/__pycache__/deca.cpython-39.pyc
