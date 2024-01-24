@@ -107,7 +107,18 @@ def binary_blending(vertices_right, vertices_left):
     return vertice_exp_lr
 
 def get_results(base_folder:str, output_base_folder:str, get_visual = False, pretrained_modelpath = None):
+    """
+    Process images in the given base folder and save results, espacially codedict in the output base folder.
 
+    Args:
+        base_folder (str): Path to the input images base folder.
+        output_base_folder (str): Path to the folder where results will be saved.
+        get_visual (bool, optional): If True, generate visualizations using DECA (default is False).
+        pretrained_modelpath (str, optional): Path to the pretrained DECA model checkpoint.
+
+    Returns:
+        None
+    """
     # Erstelle den Ausgabeordner, wenn er nicht existiert
     if not os.path.exists(output_base_folder):
         os.makedirs(output_base_folder)
@@ -329,12 +340,29 @@ def get_params(codedict_path, exp_size=50, pose_size=6, shape_size=100, add_path
     return [exp_params_left, exp_params_right, pose_params_left, pose_params_right, shape_params_left, shape_params_right]
 
 def run_deca(image_path:str, results_path:str, only_encode=True, wo_shape=True, pretrained_modelpath=None):
-    # Using DECA to Build the FLAME Model for both sides and extract the parameters
-    # Initialization
+    """
+    Run DECA to process an input image with different configuration options
+    Also for run mode with a trained model possible.
+    Default DECA: only_encode=False, wo_shape=False, pretrained_modelpath=None (using DECA Model)
+
+    Args:
+        image_path (str): Path to the input image.
+        results_path (str): Path to save the results.
+        only_encode (bool, optional): If True, only perform encoding; if False, perform full DECA processing with FLAME Model decoding(default is True).
+        wo_shape (bool, optional): If True, exclude shape information; if False, include shape information in encoding (default is True).
+        pretrained_modelpath (str, optional): Path to the pretrained DECA model checkpoint.
+
+    Returns:
+        dict: A dictionary containing DECA output, such as parameters and visualizations.
+    """
+    # Pretrained Model configuration only when without shape
     if pretrained_modelpath is not None and wo_shape:
         deca_cfg.pretrained_modelpath = pretrained_modelpath
     
+    # Initialization of DECA
     deca = DECA(deca_cfg, only_encode=only_encode, wo_shape=wo_shape)
+
+    # Get the Shape Parameters for decoding, if needed and the model is without shape
     if wo_shape and not only_encode:
         params = run_deca(image_path, results_path, wo_shape=False)
         shape_params = params['shape']
@@ -346,6 +374,7 @@ def run_deca(image_path:str, results_path:str, only_encode=True, wo_shape=True, 
     #Get the codedictionarys
     name = test[0]['imagename']
     images = test[0]['image'].to('cuda')[None,...]
+    # Encode and optional decoding
     with torch.no_grad(): 
         codedict = deca.encode(images)
         if not only_encode:
