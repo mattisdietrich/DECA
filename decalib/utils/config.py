@@ -42,7 +42,7 @@ cfg.model.n_exp = 50 # number of expression parameters used, can be 50-100 (more
 cfg.model.n_cam = 3 # number of cam parameters
 cfg.model.n_pose = 6 # number of pose parameters 
 cfg.model.n_light = 27 # number of light parameters
-cfg.model.use_tex = True # before: True, we do not need texture
+cfg.model.use_tex = False # before: True, we do not need texture
 cfg.model.jaw_type = 'aa' # default use axis angle, another option: euler. Note that: aa is not stable in the beginning
 # face recognition model
 cfg.model.fr_model_path = os.path.join(cfg.deca_dir, 'data', 'resnet50_ft_weight.pkl')
