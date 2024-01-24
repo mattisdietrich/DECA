@@ -55,7 +55,7 @@ class DECA(nn.Module):
         self.image_size = self.config.dataset.image_size
         self.uv_size___ = self.config.model.uv_size
 
-        self._create_model__(self.config.model, self.train_bool)
+        self._create_model__(self.config.model)
         self._setup_renderer(self.config.model)
 
     def _setup_renderer(self, model_cfg_):
@@ -72,7 +72,8 @@ class DECA(nn.Module):
         fixed_dis_ = np.load(model_cfg_.fixed_displacement_path)
         self.fix_uv_dis = torch.tensor(fixed_dis_).float().to(self.device____)
         # mean texture
-        mean_text_ = imread(model_cfg_.mean_tex_path).astype(np.float32)/255.; mean_text_ = torch.from_numpy(mean_text_.transpose(2,0,1))[None,:,:,:].contiguous()
+        mean_text_ = imread(model_cfg_.mean_tex_path).astype(np.float32)/255.0
+        mean_text_ = torch.from_numpy(mean_text_.transpose(2,0,1))[None,:,:,:].contiguous()
         self.mean_text_ = F.interpolate(mean_text_, [model_cfg_.uv_size, model_cfg_.uv_size]).to(self.device____)
         # dense mesh template, for save detail mesh
         self.dense_temp = np.load(model_cfg_.dense_template_path, allow_pickle=True, encoding='latin1').item()
@@ -82,11 +83,13 @@ class DECA(nn.Module):
         if not self.train_bool:
             self.num_params = model_cfg_.n_shape+model_cfg_.n_tex+model_cfg_.n_exp+model_cfg_.n_pose+model_cfg_.n_cam+model_cfg_.n_light
             self.num_list__ = [model_cfg_.n_shape, model_cfg_.n_tex, model_cfg_.n_exp, model_cfg_.n_pose, model_cfg_.n_cam, model_cfg_.n_light]
+            self.param_dict = {i:model_cfg_.get('n_' + i) for i in model_cfg_.param_list}
         else:
             self.num_params = model_cfg_.n_tex+model_cfg_.n_exp+model_cfg_.n_pose+model_cfg_.n_cam+model_cfg_.n_light
             self.num_list__ = [model_cfg_.n_tex, model_cfg_.n_exp, model_cfg_.n_pose, model_cfg_.n_cam, model_cfg_.n_light]
+            self.param_dict = {i:model_cfg_.get('n_' + i) for i in model_cfg_.param_list_wo_shape}
         
-        self.param_dict = {i:model_cfg_.get('n_' + i) for i in model_cfg_.param_list}
+        
         self.num_detail = model_cfg_.n_detail
         self.num_cond__ = model_cfg_.n_exp + 3 # exp + jaw pose
         

@@ -135,7 +135,7 @@ class VGGFace2HQDataset(Dataset):
         self.image_size = image_size
         self.imagefolder = '/home/dietrich/Testing/DECA/Dataset/VGGFACE/Images/VGGface2_None_norm_512_true_bygfpgan'
         self.kptfolder = '/home/dietrich/Testing/DECA/Dataset/VGGFACE/lmks_train'
-        self.shapefolder = '/home/dietrich/Testing/DECA/Dataset/VGGFACE/shape_train'
+        self.shapefolder = '/home/dietrich/Testing/DECA/Dataset/VGGFACE/shape_train' # _mean
         # self.segfolder = '/ps/scratch/face2d3d/texture_in_the_wild_code/VGGFace2_seg/test_crop_size_400_batch'
         # hq:
         # Does not exist; doing it without data cleaning
@@ -162,7 +162,10 @@ class VGGFace2HQDataset(Dataset):
             image_path = os.path.join(self.imagefolder, name + '.jpg')  
             #seg_path = os.path.join(self.segfolder, name + '.npy')  
             kpt_path = os.path.join(self.kptfolder, name + '_68kpts.npy')
-            shape_path = os.path.join(self.shapefolder, name + '.npy')
+            if self.shapefolder.endswith('mean'):
+                shape_path = os.path.join(self.shapefolder, name.split('/')[0]  + '/shape_mean.npy')
+            else:
+                shape_path = os.path.join(self.shapefolder, name + '.npy')
                                             
             image = imread(image_path)/255.
             kpt = np.load(kpt_path)[:,:2]
