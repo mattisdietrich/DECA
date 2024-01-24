@@ -10,3 +10,5 @@ __pycache__/
 **/*.pyc
 decalib/__pycache__/__init__.cpython-39.pyc
 decalib/__pycache__/deca.cpython-39.pyc
+/training_results
+/slurm_logs
