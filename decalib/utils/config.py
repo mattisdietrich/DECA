@@ -34,17 +34,15 @@ cfg.model.mean_tex_path = os.path.join(cfg.deca_dir, 'data', 'mean_texture.jpg')
 cfg.model.tex_path = os.path.join(cfg.deca_dir,  'data', 'FLAME_albedo_from_BFM.npz') 
 cfg.model.tex_type = 'BFM' # BFM, FLAME, albedoMM
 cfg.model.uv_size = 256 # Mapping size from 2D -> 3D
-if cfg.train_mode == 'without_shape':
-    cfg.model.param_list = ['tex', 'exp', 'pose', 'cam', 'light'] # Parameters that are calculatet
-else:
-    cfg.model.param_list = ['shape', 'tex', 'exp', 'pose', 'cam', 'light']
+cfg.model.param_list_wo_shape = ['tex', 'exp', 'pose', 'cam', 'light'] # Parameters that are calculatet
+cfg.model.param_list = ['shape', 'tex', 'exp', 'pose', 'cam', 'light']
 cfg.model.n_shape = 100 # number of shape parameters used, can be 100-300 (more than 100 has no significant effect)
 cfg.model.n_tex = 50 # number of texture parameters used
 cfg.model.n_exp = 50 # number of expression parameters used, can be 50-100 (more than 50 has no significant effect)
 cfg.model.n_cam = 3 # number of cam parameters
 cfg.model.n_pose = 6 # number of pose parameters 
 cfg.model.n_light = 27 # number of light parameters
-cfg.model.use_tex = False # before: True, wen do not need texture
+cfg.model.use_tex = True # before: True, we do not need texture
 cfg.model.jaw_type = 'aa' # default use axis angle, another option: euler. Note that: aa is not stable in the beginning
 # face recognition model
 cfg.model.fr_model_path = os.path.join(cfg.deca_dir, 'data', 'resnet50_ft_weight.pkl')
@@ -103,7 +101,7 @@ cfg.loss.id_shape_only = False
 cfg.loss.reg_exp = 1e-04 # Weight for the expression regularization loss
 cfg.loss.reg_tex = 1e-04 # Weight for the Texture regularization loss
 cfg.loss.reg_light = 1. # Weight for the regularization loss on lighting parameters.
-cfg.loss.reg_jaw_pose = 0. #1.Weight for the regularization loss on jaw pose. If set to a non-zero value, it enforces regularization on jaw pose.
+cfg.loss.reg_jaw_pose = 0. #1. Weight for the regularization loss on jaw pose. If set to a non-zero value, it enforces regularization on jaw pose.
 cfg.loss.use_gender_prior = False # Bol to se Gender information
 cfg.loss.shape_consistency = False
 # loss for detail
@@ -112,7 +110,7 @@ cfg.loss.useConstraint = True #
 cfg.loss.mrf = 5e-2 # Reconstructing geometric details: Implicit Diversified Markov Random Field (ID-MRF) loss
 cfg.loss.photo_D = 2. # Weight for the photometric loss on the detail
 cfg.loss.reg_sym = 0.005 # add robustness to self-occlusions; soft symmetry loss
-cfg.loss.reg_z = 0.005 # somethign with uv map 
+cfg.loss.reg_z = 0.005 # something with uv map 
 cfg.loss.reg_diff = 0.005 # shading smootheness
 
 
