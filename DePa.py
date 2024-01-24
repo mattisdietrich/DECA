@@ -25,60 +25,6 @@ from IPython.display import display
 import numpy as np
 import re
 
-
-def decompose_code(concatCode, num_dict__):
-        ''' Convert a flattened parameter vector to a dictionary of parameters
-        code_dict.keys() = [('shape',) 'tex', 'exp', 'pose', 'cam', 'light']
-        Copied from deca
-        '''
-        code_dict_ = {}
-        start_ind_ = 0
-        for key in num_dict__:
-            end_ind___      = start_ind_+int(num_dict__[key])
-            code_dict_[key] = concatCode[:, start_ind_:end_ind___]
-            start_ind_      = end_ind___
-            if key == 'light':
-                code_dict_[key] = code_dict_[key].reshape(code_dict_[key].shape[0], 9, 3)
-        return code_dict_
-
-def encode(image_path: str, model_path='/home/dietrich/Testing/DECA/DECA/data/deca_model.tar'):
-    """Encode an image to obtain parameters.
-
-    Args:
-        image_path (str): Path to the input image.
-        model_path (str, optional): Path to the DECA model checkpoint (default is '/home/dietrich/Testing/DECA/DECA/data/deca_model.tar').
-
-    Returns:
-        dict: A dictionary containing parameters and the input image.
-    """
-    
-    n_shape = 100
-    n_tex = 50
-    n_exp = 50
-    n_pose = 6
-    n_cam = 3
-    n_light = 27
-
-    num_params = n_shape+n_tex+n_exp+n_pose+n_cam+n_light
-    E_flame  = ResnetEncoder(outsize=num_params).to('cuda')
-
-    param_dict = {'shape': n_shape, 'tex': n_tex, 'exp': n_exp, 'pose': n_pose, 'cam': n_cam, 'light': n_light}
-
-    checkpoint = torch.load(model_path)
-    util.copy_state_dict(E_flame.state_dict(), checkpoint['E_flame'])
-    E_flame.eval()
-
-    testdata__ = datasets.TestData(image_path)
-
-    for i in range(len(image_path)):
-        imgs_batch = testdata__[0]['image'].to('cuda')[None,...]
-        with torch.no_grad():
-                parameters = E_flame(imgs_batch)
-        code_dict__ = decompose_code(parameters, param_dict)
-        code_dict__['images'] = imgs_batch
-            
-    return code_dict__
-
 def decouple(image_path: str, results_path: str, device='cuda'):
     """ Taking an image and decouple it in left an right side + generating flipped images.
 
@@ -160,82 +106,6 @@ def binary_blending(vertices_right, vertices_left):
 
     return vertice_exp_lr
 
-def decode_wo_shape(fn:str, image_path:str, results_path: str, pretrained_modelpath=None):
-    # Using DECA to Build the FLAME Model for both sides and extract the parameters
-    # Initialization
-    if pretrained_modelpath is not None:
-        deca_cfg.pretrained_modelpath = pretrained_modelpath
-
-    deca_cfg.train_mode = 'without_shape'
-    deca = DECA()
-    #Get the data in the right format
-    test = datasets.TestData(image_path)
-    render_orig = True
-    #Get the codedictionarys
-    for i in tqdm(range(len(test))):
-        name = test[i]['imagename']
-        images = test[i]['image'].to('cuda')[None,...]
-        with torch.no_grad(): 
-            codedict = deca.encode(images)
-            shape_params = get_shape_params(image_path)
-            opdict, visdict = deca.decode(codedict, shape_params=shape_params) #tensor
-            if render_orig:
-                tform = test[i]['tform'][None, ...]
-                tform = torch.inverse(tform).transpose(1,2).to('cuda')
-                original_image = test[i]['original_image'][None, ...].to('cuda')
-                _, orig_visdict = deca.decode(codedict, render_orig=True, original_image=original_image, tform=tform, shape_params=shape_params)    
-                orig_visdict['inputs'] = original_image    
-            
-    deca.save_obj(os.path.join(results_path, fn + '.obj'), opdict)
-    cv2.imwrite(os.path.join(results_path, fn + '_vis.png'), deca.visualize(visdict))
-
-    # Save codedictionary
-    torch.save(codedict, os.path.join(results_path, fn + '_codedict.pth'))
-
-    torch.cuda.empty_cache()
-
-    return codedict
-
-def encode_wo_shape(image_path:str, pretrained_modelpath=None):
-    n_tex = 50
-    n_exp = 50
-    n_pose = 6
-    n_cam = 3
-    n_light = 27
-
-    num_params = n_tex+n_exp+n_pose+n_cam+n_light
-    E_flame  = ResnetEncoder(outsize=num_params).to('cuda')
-
-    param_dict = {'tex': n_tex, 'exp': n_exp, 'pose': n_pose, 'cam': n_cam, 'light': n_light}
-
-    checkpoint = torch.load(pretrained_modelpath)
-    util.copy_state_dict(E_flame.state_dict(), checkpoint['E_flame'])
-    E_flame.eval()
-
-    testdata__ = datasets.TestData(image_path)
-
-    for i in range(len(image_path)):
-        imgs_batch = testdata__[0]['image'].to('cuda')[None,...]
-        with torch.no_grad():
-                parameters = E_flame(imgs_batch)
-        code_dict__ = decompose_code(parameters, param_dict)
-        code_dict__['images'] = imgs_batch
-    
-    return code_dict__
-
-def get_shape_params(image_path: str, device='cuda'):
-    """Function for getting the shape paramters of an image
-    """
-    deca_cfg.train_mode = ''
-    deca = DECA()
-    testdata__ = datasets.TestData(image_path)
-    for i in range(len(image_path)):
-        imgs_batch = testdata__[0]['image'].to('cuda')[None,...]
-        with torch.no_grad(): 
-            codedict = deca.encode(imgs_batch)
-            
-    return codedict['shape']
-
 def get_results(base_folder:str, output_base_folder:str, get_visual = False, pretrained_modelpath = None):
 
     # Erstelle den Ausgabeordner, wenn er nicht existiert
@@ -268,14 +138,14 @@ def get_results(base_folder:str, output_base_folder:str, get_visual = False, pre
                     # Führe die DePa.decouple-Funktion auf die Bilddatei aus
                     fn, left_mir, right_mir = decouple(file_path, result_path)
                     if get_visual:
-                        decode_wo_shape(fn + "_left_", left_mir, result_path)
-                        decode_wo_shape(fn + "_right_", right_mir, result_path)
+                        run_deca(left_mir, result_path, only_encode=False, wo_shape=True, pretrained_modelpath=pretrained_modelpath)
+                        run_deca(right_mir, result_path, only_encode=False, wo_shape=True, pretrained_modelpath=pretrained_modelpath)
 
-                    left_shape = encode(left_mir)
-                    right_shape = encode(right_mir)
+                    left_shape = run_deca(left_mir, result_path, only_encode=True, wo_shape=False, pretrained_modelpath=pretrained_modelpath)
+                    right_shape = run_deca(right_mir, result_path, only_encode=True, wo_shape=False, pretrained_modelpath=pretrained_modelpath)
                     
-                    left_codedict = encode_wo_shape(left_mir, pretrained_modelpath)
-                    right_codedict = encode_wo_shape(left_mir, pretrained_modelpath)
+                    left_codedict = run_deca(left_mir, result_path, only_encode=True, wo_shape=True, pretrained_modelpath=pretrained_modelpath)
+                    right_codedict = run_deca(right_mir, result_path, only_encode=True, wo_shape=True, pretrained_modelpath=pretrained_modelpath)
 
                     
 
@@ -293,7 +163,7 @@ def get_results(base_folder:str, output_base_folder:str, get_visual = False, pre
 
                     }
 
-                    torch.save(codedict_decoupled, os.path.join(result_path,fn+"_codedict.pth"))
+                    torch.save(codedict_decoupled, os.path.join(result_path,fn+"_dec_codedict.pth"))
 
 def visualization_exp_shape(expression_indices, expressionnames, parameter_list):
     """
@@ -457,3 +327,42 @@ def get_params(codedict_path, exp_size=50, pose_size=6, shape_size=100, add_path
                     shape_params_right[num_exp - 1, num_rec - smallest_num - 1] = np.array(codedict["right"]["shape"].cpu())[:shape_size]
 
     return [exp_params_left, exp_params_right, pose_params_left, pose_params_right, shape_params_left, shape_params_right]
+
+def run_deca(image_path:str, results_path:str, only_encode=True, wo_shape=True, pretrained_modelpath=None):
+    # Using DECA to Build the FLAME Model for both sides and extract the parameters
+    # Initialization
+    if pretrained_modelpath is not None and wo_shape:
+        deca_cfg.pretrained_modelpath = pretrained_modelpath
+    
+    deca = DECA(deca_cfg, only_encode=only_encode, wo_shape=wo_shape)
+    if wo_shape and not only_encode:
+        params = run_deca(image_path, results_path, wo_shape=False)
+        shape_params = params['shape']
+    else:
+        shape_params=None
+    #Get the data in the right format
+    test = datasets.TestData(image_path)
+    render_orig = True
+    #Get the codedictionarys
+    name = test[0]['imagename']
+    images = test[0]['image'].to('cuda')[None,...]
+    with torch.no_grad(): 
+        codedict = deca.encode(images)
+        if not only_encode:
+            opdict, visdict = deca.decode(codedict, shape_params=shape_params) #tensor
+            if render_orig:
+                tform = test[0]['tform'][None, ...]
+                tform = torch.inverse(tform).transpose(1,2).to('cuda')
+                original_image = test[0]['original_image'][None, ...].to('cuda')
+                _, orig_visdict = deca.decode(codedict, render_orig=True, original_image=original_image, tform=tform, shape_params=shape_params)    
+                orig_visdict['inputs'] = original_image    
+            
+            deca.save_obj(os.path.join(results_path, name + '.obj'), opdict)
+            cv2.imwrite(os.path.join(results_path, name + '_vis.png'), deca.visualize(visdict))
+
+    # Save codedictionary
+    torch.save(codedict, os.path.join(results_path, name + '_codedict.pth'))
+
+    torch.cuda.empty_cache()
+
+    return codedict
