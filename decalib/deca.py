@@ -39,24 +39,26 @@ from IPython.display import display
 import multiprocessing as mp
 
 class DECA(nn.Module):
-    def __init__(self, config_build=None, device='cuda'):
+    def __init__(self, config_build=None, device='cuda', only_encode=False, wo_shape=False):
         super(DECA, self).__init__()
         if config_build is None:
             self.config = config_default
         else:
             self.config = config_build
-        if self.config.train_mode == 'without_shape':
-            self.train_bool = True
+        if self.config.train_mode == 'without_shape' or wo_shape:
+            self.wo_shape = True
         else:
-            self.train_bool = False
+            self.wo_shape = False
 
+        self.only_encode = only_encode
 
         self.device____ = device
         self.image_size = self.config.dataset.image_size
         self.uv_size___ = self.config.model.uv_size
 
         self._create_model__(self.config.model)
-        self._setup_renderer(self.config.model)
+        if not self.only_encode:
+            self._setup_renderer(self.config.model)
 
     def _setup_renderer(self, model_cfg_):
         set_rasterizer(self.config.rasterizer_type)
@@ -80,7 +82,7 @@ class DECA(nn.Module):
 
     def _create_model__(self, model_cfg_):
         # set up parameters
-        if not self.train_bool:
+        if not self.wo_shape:
             self.num_params = model_cfg_.n_shape+model_cfg_.n_tex+model_cfg_.n_exp+model_cfg_.n_pose+model_cfg_.n_cam+model_cfg_.n_light
             self.num_list__ = [model_cfg_.n_shape, model_cfg_.n_tex, model_cfg_.n_exp, model_cfg_.n_pose, model_cfg_.n_cam, model_cfg_.n_light]
             self.param_dict = {i:model_cfg_.get('n_' + i) for i in model_cfg_.param_list}
@@ -97,11 +99,12 @@ class DECA(nn.Module):
         self.E_flame  = ResnetEncoder(outsize=self.num_params).to(self.device____) 
         self.E_detail = ResnetEncoder(outsize=self.num_detail).to(self.device____)
 
-        # decoders
-        self.flame = FLAME(model_cfg_).to(self.device____)
-        if model_cfg_.use_tex:
-            self.flametex = FLAMETex(model_cfg_).to(self.device____)
-        self.D_detail = Generator(latent_dim=self.num_detail+self.num_cond__, out_channels=1, out_scale=model_cfg_.max_z, sample_mode = 'bilinear').to(self.device____)
+        if not self.only_encode:
+            # decoders
+            self.flame = FLAME(model_cfg_).to(self.device____)
+            if model_cfg_.use_tex:
+                self.flametex = FLAMETex(model_cfg_).to(self.device____)
+            self.D_detail = Generator(latent_dim=self.num_detail+self.num_cond__, out_channels=1, out_scale=model_cfg_.max_z, sample_mode = 'bilinear').to(self.device____)
         # resume model
         model_path = self.config.pretrained_modelpath
         if os.path.exists(model_path):
@@ -110,14 +113,16 @@ class DECA(nn.Module):
             self.checkpoint = checkpoint
             util.copy_state_dict(self.E_flame.state_dict(), checkpoint['E_flame'])
             util.copy_state_dict(self.E_detail.state_dict(), checkpoint['E_detail'])
-            util.copy_state_dict(self.D_detail.state_dict(), checkpoint['D_detail'])
+            if not self.only_encode:
+                util.copy_state_dict(self.D_detail.state_dict(), checkpoint['D_detail'])
         else:
             print(f'please check model path: {model_path}')
             # exit()
         # eval mode
         self.E_flame.eval()
         self.E_detail.eval()
-        self.D_detail.eval()
+        if not self.only_encode:
+            self.D_detail.eval()
 
     def decompose_code(self, concatCode, num_dict__):
         ''' Convert a flattened parameter vector to a dictionary of parameters
@@ -185,7 +190,7 @@ class DECA(nn.Module):
         batch_size = imgs_batch.shape[0]
         
         ## decode
-        if not self.train_bool:
+        if not self.wo_shape:
             verts, lmks_2dim_, lmks_3dim_ = self.flame(shape_params=code_dict__['shape'], expression_params=code_dict__['exp'], pose_params=code_dict__['pose'])
         else:
             verts, lmks_2dim_, lmks_3dim_ = self.flame(shape_params=shape_params, expression_params=code_dict__['exp'], pose_params=code_dict__['pose'])
