@@ -72,6 +72,7 @@ class Trainer(object):
             self.id_loss = lossfunc.VGGFace2Loss(pretrained_model=self.cfg.model.fr_model_path)      
         """
         logger.add(os.path.join(self.cfg.output_dir, self.cfg.train.log_dir, 'train.log'))
+
         if self.cfg.train.write_summary:
             from torch.utils.tensorboard import SummaryWriter
             self.writer = SummaryWriter(log_dir=os.path.join(self.cfg.output_dir, self.cfg.train.log_dir))
@@ -302,7 +303,7 @@ class Trainer(object):
         losses['all_loss'] = all_loss
         return losses, opdict
         
-    def validation_step(self):
+    def validation_step(self, step):
         self.deca.eval()
         try:
             batch = next(self.val_iter)
@@ -442,7 +443,7 @@ class Trainer(object):
                         torch.save(model_dict, os.path.join(self.cfg.output_dir, 'models', f'{self.global_step:08}.tar'))   
 
                 if self.global_step % self.cfg.train.val_steps == 0:
-                    self.validation_step()
+                    self.validation_step(step)
                 
                 #if self.global_step % self.cfg.train.eval_steps == 0:
                 #    self.evaluate()

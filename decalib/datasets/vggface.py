@@ -135,7 +135,7 @@ class VGGFace2HQDataset(Dataset):
         self.image_size = image_size
         self.imagefolder = '/home/dietrich/Testing/DECA/Dataset/VGGFACE/Images/VGGface2_None_norm_512_true_bygfpgan'
         self.kptfolder = '/home/dietrich/Testing/DECA/Dataset/VGGFACE/lmks_train'
-        self.shapefolder = '/home/dietrich/Testing/DECA/Dataset/VGGFACE/shape_train' # _mean
+        self.shapefolder = '/home/dietrich/Testing/DECA/Dataset/VGGFACE/shape_train_mean' # _mean
         # self.segfolder = '/ps/scratch/face2d3d/texture_in_the_wild_code/VGGFace2_seg/test_crop_size_400_batch'
         # hq:
         # Does not exist; doing it without data cleaning

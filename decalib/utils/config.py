@@ -13,8 +13,7 @@ cfg.deca_dir = abs_deca_dir
 cfg.device = 'cuda'
 cfg.device_id = '0'
 
-cfg.pretrained_modelpath = '' #os.path.join(config_train.deca_dir, 'data', 'deca_model.tar')
-cfg.output_dir = ''
+cfg.pretrained_modelpath = os.path.join(cfg.deca_dir, 'data', 'deca_model.tar')
 cfg.rasterizer_type = 'pytorch3d'
 cfg.train_mode = '' # For training without shape: 'without_shape'
 # ---------------------------------------------------------------------------- #
@@ -72,8 +71,8 @@ cfg.dataset.trans_scale = 0. #transformation = 0
 # ---------------------------------------------------------------------------- #
 cfg.train = CN()
 cfg.train.train_detail = False #  False: Coarse mode, True: Detail mode
-cfg.train.max_epochs = 10 # Number of Epochs; Number of passes through whole training dataset
-cfg.train.max_steps = 1000000 # Number of iterations thtough optimization algorithm
+cfg.train.max_epochs = 50 # Number of Epochs; Number of passes through whole training dataset
+cfg.train.max_steps = cfg.train.max_epochs*10000 # Number of iterations thtough optimization algorithm
 cfg.train.lr = 1e-4 # learning rate; size of step during optimization
 cfg.train.log_dir = 'logs' # directory for logs
 cfg.train.log_steps = 10 # Based on number of steps: How often logging
@@ -81,7 +80,7 @@ cfg.train.vis_dir = 'train_images' # visualization of training images
 cfg.train.vis_steps = 200 # How often saving after number of steps
 cfg.train.write_summary = True 
 cfg.train.checkpoint_steps = 500 # How often saving models state after x number of steps
-cfg.train.val_steps = 500 # How often validation after num of steps
+cfg.train.val_steps = 1000 # How often validation after num of steps
 cfg.train.val_vis_dir = 'val_images'
 cfg.train.eval_steps = 5000 # How often evaluation after number of steps
 cfg.train.resume = False # Resume training after last checkpoint
@@ -96,23 +95,24 @@ cfg.loss.eyed = 1.0 # !Relative! Offset between upper and lower eyelid landmarks
 cfg.loss.lipd = 0.5 # Lip region landmark loss? No more description found
 cfg.loss.photo = 2.0 # Error between Input Image and Rendering via Hadamar Product
 cfg.loss.useSeg = False # Changed, because we do not have the required mask
-cfg.loss.id = 0. #not used, cause we do not train identity
+cfg.loss.id = 0.0 #not used, cause we do not train identity
 cfg.loss.id_shape_only = False
 cfg.loss.reg_exp = 1e-04 # Weight for the expression regularization loss
 cfg.loss.reg_tex = 1e-04 # Weight for the Texture regularization loss
-cfg.loss.reg_light = 1. # Weight for the regularization loss on lighting parameters.
-cfg.loss.reg_jaw_pose = 0. #1. Weight for the regularization loss on jaw pose. If set to a non-zero value, it enforces regularization on jaw pose.
-cfg.loss.use_gender_prior = False # Bol to se Gender information
+cfg.loss.reg_light = 1.0 # Weight for the regularization loss on lighting parameters.
+cfg.loss.reg_jaw_pose = 0.0 #1. Weight for the regularization loss on jaw pose. If set to a non-zero value, it enforces regularization on jaw pose.
+cfg.loss.use_gender_prior = False # Bool to se Gender information
 cfg.loss.shape_consistency = False
 # loss for detail
 cfg.loss.detail_consistency = True # Disentaglement between identity and expression dependent details
 cfg.loss.useConstraint = True # 
 cfg.loss.mrf = 5e-2 # Reconstructing geometric details: Implicit Diversified Markov Random Field (ID-MRF) loss
-cfg.loss.photo_D = 2. # Weight for the photometric loss on the detail
+cfg.loss.photo_D = 2.0 # Weight for the photometric loss on the detail
 cfg.loss.reg_sym = 0.005 # add robustness to self-occlusions; soft symmetry loss
 cfg.loss.reg_z = 0.005 # something with uv map 
 cfg.loss.reg_diff = 0.005 # shading smootheness
 
+cfg.output_dir = ''
 
 def get_cfg_defaults():
     """Get a yacs CfgNode object with default values for my_project."""

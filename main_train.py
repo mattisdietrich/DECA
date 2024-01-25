@@ -8,12 +8,16 @@ import torch.backends.cudnn as cudnn
 import torch
 import shutil
 from copy import deepcopy
+from datetime import date
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '.')))
 np.random.seed(0)
 
 def main(cfg):
-    # creat folders 
+    # creat folders
+    current_date = date.today()
+    cfg.output_dir = os.path.join('/home/dietrich/Testing/DECA/DECA/training_results', f'{current_date}_{cfg.train_mode}_data_{cfg.dataset.training_data[0]}_e_{cfg.train.max_epochs}_b_{cfg.dataset.batch_size}_k_{cfg.dataset.K}_lmk_{cfg.loss.lmk}_id_{cfg.loss.id}_exp_{cfg.loss.reg_exp}')
+    os.makedirs(cfg.output_dir, exist_ok=True)
     os.makedirs(os.path.join(cfg.output_dir, cfg.train.log_dir), exist_ok=True)
     os.makedirs(os.path.join(cfg.output_dir, cfg.train.vis_dir), exist_ok=True)
     os.makedirs(os.path.join(cfg.output_dir, cfg.train.val_vis_dir), exist_ok=True)
@@ -46,4 +50,4 @@ if __name__ == '__main__':
     main(cfg)
 
 # run:
-# python main_train.py --cfg configs/release_version/deca_pretrain.yml 
+# python main_train.py --cfg configs/release_version/deca_pretrain.yml
