@@ -14,6 +14,7 @@ from .ethnicity import EthnicityDataset
 from .aflw2000 import AFLW2000
 from .now import NoWDataset
 from .vox import VoxelDataset
+from .owndata import OwnDataset
 
 def build_train(config, is_train=True):
     data_list = []
@@ -29,6 +30,10 @@ def build_train(config, is_train=True):
         data_list.append(COCODataset(image_size=config.image_size, scale=[config.scale_min, config.scale_max], trans_scale=config.trans_scale))
     if 'celebahq' in config.training_data:
         data_list.append(CelebAHQDataset(image_size=config.image_size, scale=[config.scale_min, config.scale_max], trans_scale=config.trans_scale))
+    if 'own_dataset' in config.training_data:
+        data_list.append(OwnDataset(K=config.K, image_size=config.image_size, scale=[config.scale_min, config.scale_max], trans_scale=config.trans_scale, isSingle=config.isSingle))
+
+    
     dataset = ConcatDataset(data_list)
     
     return dataset
@@ -41,6 +46,8 @@ def build_val(config, is_train=True):
         data_list.append(NoWDataset())
     if 'aflw2000' in config.eval_data:
         data_list.append(AFLW2000())
+    if 'own_dataset' in config.training_data:
+        data_list.append(OwnDataset(isEval=True, K=config.K, image_size=config.image_size, scale=[config.scale_min, config.scale_max], trans_scale=config.trans_scale, isSingle=config.isSingle))
     dataset = ConcatDataset(data_list)
 
     return dataset
