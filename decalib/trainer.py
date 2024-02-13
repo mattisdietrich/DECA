@@ -166,7 +166,7 @@ class Trainer(object):
             opdict['images'] = imgs_batch
             opdict['lmk'] = lmks_batch
 
-            if self.cfg.loss.photo > 0.:
+            if self.cfg.loss.photo > 0.0:
                 #------ rendering
                 # mask
                 mask_face_eye = F.grid_sample(self.deca.uv_face_eye_mask.expand(batch_size,-1,-1,-1), opdict['grid'].detach(), align_corners=False) 
@@ -183,12 +183,12 @@ class Trainer(object):
                 losses['landmark'] = lossfunc.weighted_landmark_loss(predicted_landmarks, lmks_batch)*self.cfg.loss.lmk
             else:    
                 losses['landmark'] = lossfunc.landmark_loss(predicted_landmarks, lmks_batch)*self.cfg.loss.lmk
-            if self.cfg.loss.eyed > 0.:
+            if self.cfg.loss.eyed > 0.0:
                 losses['eye_distance'] = lossfunc.eyed_loss(predicted_landmarks, lmks_batch)*self.cfg.loss.eyed
-            if self.cfg.loss.lipd > 0.:
+            if self.cfg.loss.lipd > 0.0:
                 losses['lip_distance'] = lossfunc.lipd_loss(predicted_landmarks, lmks_batch)*self.cfg.loss.lipd
             
-            if self.cfg.loss.photo > 0.:
+            if self.cfg.loss.photo > 0.0:
                 if self.cfg.loss.useSeg: #is False
                     mask_batch = mask_batch[:,None,:,:]
                 else:
@@ -196,7 +196,7 @@ class Trainer(object):
                 losses['photometric_texture'] = (mask_batch*(predicted_images - imgs_batch).abs()).mean()*self.cfg.loss.photo
             """Using no shape
             
-            if self.cfg.loss.id > 0.:
+            if self.cfg.loss.id > 0.0:
                 shading_images = self.deca.render.add_SHlight(opdict['normal_images'], codedict['light'].detach())
                 albedo_images = F.grid_sample(opdict['albedo'].detach(), opdict['grid'], align_corners=False)
                 overlay = albedo_images*shading_images*mask_face_eye + images*(1-mask_face_eye)
@@ -310,14 +310,16 @@ class Trainer(object):
         except:
             self.val_iter = iter(self.val_dataloader)
             batch = next(self.val_iter)
-        images = batch['image'].to(self.device); images = images.view(-1, images.shape[-3], images.shape[-2], images.shape[-1]) 
+        imgs_batch = batch['image'].to(self.device); imgs_batch = imgs_batch.view(-1, imgs_batch.shape[-3], imgs_batch.shape[-2], imgs_batch.shape[-1]) 
+        lmks_batch = batch['landmark'].to(self.device); lmks_batch = lmks_batch.view(-1, lmks_batch.shape[-2], lmks_batch.shape[-1])
         shapebatch = batch['shape'].to(self.device); shapebatch = shapebatch.view(-1, shapebatch.shape[-2], shapebatch.shape[-1])
         shapebatch = shapebatch.squeeze()
         with torch.no_grad():
-            codedict = self.deca.encode(images)
+            codedict = self.deca.encode(imgs_batch)
             opdict, visdict = self.deca.decode(codedict, shape_params=shapebatch)
         savepath = os.path.join(self.cfg.output_dir, self.cfg.train.val_vis_dir, f'{self.global_step:08}.jpg')
         grid_image = util.visualize_grid(visdict, savepath, return_gird=True)
+        grid_image = cv2.cvtColor(grid_image, cv2.COLOR_BGR2RGB)
         self.writer.add_image('val_images', (grid_image/255.).astype(np.float32).transpose(2,0,1), self.global_step)
         self.deca.train()
 
@@ -342,8 +344,8 @@ class Trainer(object):
             with torch.no_grad():
                 codedict = self.deca.encode(images)
                 _, visdict = self.deca.decode(codedict)
-                codedict['exp'][:] = 0.
-                codedict['pose'][:] = 0.
+                codedict['exp'][:] = 0.0
+                codedict['pose'][:] = 0.0
                 opdict, _ = self.deca.decode(codedict)
             #-- save results for evaluation
             verts = opdict['verts'].cpu().numpy()
@@ -366,7 +368,7 @@ class Trainer(object):
                     cv2.imwrite(os.path.join(savefolder, imagename[k], name + '_' + vis_name +'.jpg'), image)
             # visualize results to check
             util.visualize_grid(visdict, os.path.join(savefolder, f'{i}.jpg'))
-
+        
         ## then please run main.py in https://github.com/soubhiksanyal/now_evaluation, it will take around 30min to get the metric results
         self.deca.train()
 
@@ -428,7 +430,8 @@ class Trainer(object):
 
                     savepath = os.path.join(self.cfg.output_dir, self.cfg.train.vis_dir, f'{self.global_step:06}.jpg')
                     grid_image = util.visualize_grid(visdict, savepath, return_gird=True)
-                    # import ipdb; ipdb.set_trace()                    
+                    # import ipdb; ipdb.set_trace()         iters_every_epoch           
+                    grid_image = cv2.cvtColor(grid_image, cv2.COLOR_BGR2RGB)
                     self.writer.add_image('train_images', (grid_image/255.).astype(np.float32).transpose(2,0,1), self.global_step)
 
                 if self.global_step>0 and self.global_step % self.cfg.train.checkpoint_steps == 0:
