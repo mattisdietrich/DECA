@@ -17,7 +17,7 @@ from torch.utils.data import Dataset, DataLoader, ConcatDataset
 class VGGFace2Dataset(Dataset):
     def __init__(self, K, image_size, scale, trans_scale = 0, isTemporal=False, isEval=False, isSingle=False):
         '''
-        K must be less than 6
+        K must be less than 6, just because?
         '''
         self.K = K
         self.image_size = image_size
@@ -124,8 +124,6 @@ class VGGFace2Dataset(Dataset):
             mask = np.ones((h, w))
         return mask
 
-
-
 class VGGFace2HQDataset(Dataset):
     def __init__(self, K, image_size, scale, trans_scale = 0, isTemporal=False, isEval=False, isSingle=False):
         '''
@@ -167,7 +165,7 @@ class VGGFace2HQDataset(Dataset):
             else:
                 shape_path = os.path.join(self.shapefolder, name + '.npy')
                                             
-            image = imread(image_path)/255.
+            image = imread(image_path)/255.0
             kpt = np.load(kpt_path)[:,:2]
             shape = np.load(shape_path)
             #mask = self.load_mask(seg_path, image.shape[0], image.shape[1])
