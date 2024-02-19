@@ -349,7 +349,7 @@ def run_deca(image_path:str, results_path=None, only_encode=True, wo_shape=True,
 
     Args:
         image_path (str): Path to the input image.
-        results_path (str): Path to save the results.
+        results_path (str, optional): Path to save the results of encoding (and decoding)
         only_encode (bool, optional): If True, only perform encoding; if False, perform full DECA processing with FLAME Model decoding(default is True).
         wo_shape (bool, optional): If True, exclude shape information; if False, include shape information in encoding (default is True).
         pretrained_modelpath (str, optional): Path to the pretrained DECA model checkpoint.
@@ -387,19 +387,19 @@ def run_deca(image_path:str, results_path=None, only_encode=True, wo_shape=True,
                 original_image = test[0]['original_image'][None, ...].to('cuda')
                 _, orig_visdict = deca.decode(codedict, render_orig=True, original_image=original_image, tform=tform, shape_params=shape_params)    
                 orig_visdict['inputs'] = original_image    
-            
-            deca.save_obj(os.path.join(results_path, name + '.obj'), opdict)
-            cv2.imwrite(os.path.join(results_path, name + '_vis.png'), deca.visualize(visdict))
+            if results_path != None:
+                deca.save_obj(os.path.join(results_path, name + '.obj'), opdict)
+                cv2.imwrite(os.path.join(results_path, name + '_vis.png'), deca.visualize(visdict))
 
     # Save codedictionary
-    if results_path != None:
+    
         torch.save(codedict, os.path.join(results_path, name + '_codedict.pth'))
 
     torch.cuda.empty_cache()
 
     return codedict
 
-def blendshapes_for_dataset(base_folder, num_exp=9, num_bs=52, end = ""):
+def blendshapes_for_dataset(base_folder, num_exp=9, num_bs=52, end = "", pretrained_modelpath="/home/dietrich/Testing/DECA/DECA/data/deca_model.tar"):
     entries = os.listdir(base_folder)
     folders = [entry for entry in entries if os.path.isdir(os.path.join(base_folder, entry))]
     individuals = len(folders)
@@ -416,7 +416,7 @@ def blendshapes_for_dataset(base_folder, num_exp=9, num_bs=52, end = ""):
                     if exp_num == 11:
                         exp_num = 9
                     if not exp_num >= 10:
-                        blendshapes = run_deca(file_path, wo_shape=True, pretrained_modelpath="/home/dietrich/Testing/DECA/DECA/training_results/2024-02-01_without_shape_data_vggface2hq_e_50_b_32_k_4_lmk_1.0_exp_0.0/model.tar")
+                        blendshapes = run_deca(file_path, wo_shape=True, pretrained_modelpath=pretrained_modelpath)
                         bs_list[count, exp_num-1] = blendshapes['exp'].cpu().tolist()[0]
         count+=1
     
